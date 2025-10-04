@@ -7,15 +7,7 @@ import routes from "./routes/index";
 dotenv.config();
 const app = express();
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173", // front dev
-      "https://personal-trainer-tau.vercel.app/users", // front prod
-    ],
-    credentials: true,
-  })
-);
+app.use(cors());
 
 app.use(express.json());
 
