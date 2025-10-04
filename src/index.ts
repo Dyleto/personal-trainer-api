@@ -11,7 +11,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173", // front dev
-      "https://personal-trainer-fynm264op-dyletos-projects.vercel.app", // front prod
+      "https://personal-trainer-tau.vercel.app/users", // front prod
     ],
     credentials: true,
   })
