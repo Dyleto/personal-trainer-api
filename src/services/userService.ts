@@ -1,9 +1,10 @@
-import User from "../models/user.js";
+import User, { IUser } from "../models/User";
 
-export const createUserService = async (data) => {
-  return await User.create(data);
+export const createUserService = async (data: IUser): Promise<IUser> => {
+  const newUser = new User(data);
+  return await newUser.save();
 };
 
-export const getUsersService = async () => {
+export const getUsersService = async (): Promise<IUser[]> => {
   return await User.find();
 };

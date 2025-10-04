@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
-import User from "../models/user";
+import User from "../models/User";
+import { createUserService, getUsersService } from "../services/userService";
 
 export const getUsers = async (_req: Request, res: Response) => {
   try {
-    const users = await User.find();
+    const users = await getUsersService();
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -12,9 +13,8 @@ export const getUsers = async (_req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const newUser = new User(req.body);
-    const savedUser = await newUser.save();
-    res.json(savedUser);
+    const user = await createUserService(req.body);
+    res.json(user);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
