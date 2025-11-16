@@ -8,7 +8,7 @@ export const authMiddleware = (
   const userId = (req.session as any).userId;
 
   if (!userId) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "Accès non autorisé" });
   }
 
   next();
