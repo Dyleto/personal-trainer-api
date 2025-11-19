@@ -5,7 +5,6 @@ import { OAuth2Client } from "google-auth-library";
 import Client from "../models/Client";
 import InvitationToken from "../models/InvitationToken";
 import Coach from "../models/Coach";
-import { error } from "console";
 
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);

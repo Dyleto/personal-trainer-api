@@ -6,7 +6,6 @@ import routes from "./routes/index";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import authRoutes from "./routes/auth";
-import adminRoutes from "./routes/admin";
 
 dotenv.config();
 const app = express();
@@ -30,7 +29,7 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 day
     },
   })
