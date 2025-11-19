@@ -5,6 +5,7 @@ import { OAuth2Client } from "google-auth-library";
 import Client from "../models/Client";
 import InvitationToken from "../models/InvitationToken";
 import Coach from "../models/Coach";
+import { error } from "console";
 
 const router = Router();
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -116,7 +117,6 @@ router.post("/google-callback", async (req: Request, res: Response) => {
       const builtUser = await buildUser(user);
 
       return res.json({
-        token: id_token,
         user: builtUser,
       });
     }
@@ -144,7 +144,6 @@ router.post("/google-callback", async (req: Request, res: Response) => {
     const builtUser = await buildUser(user);
 
     res.json({
-      token: id_token,
       user: builtUser,
     });
   } catch (error) {
@@ -216,6 +215,17 @@ router.get("/me", async (req: Request, res: Response) => {
     console.error("Fetch user error:", error);
     res.status(500).json({ message: "Erreur serveur" });
   }
+});
+
+router.post("/logout", (req: Request, res: Response) => {
+  req.session.destroy((error) => {
+    if (error) {
+      return res.status(500).json({ message: "Erreur lors de la déconnexion" });
+    }
+
+    res.clearCookie("connect.sid");
+    res.json({ message: "Déconnexion réussie" });
+  });
 });
 
 async function buildUser(user: IUser) {
