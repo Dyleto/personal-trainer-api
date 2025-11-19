@@ -1,7 +1,8 @@
 import { model, Schema, Types } from "mongoose";
+import { IUser } from "./User";
 
 export interface ICoach extends Document {
-  userId: Types.ObjectId;
+  userId: IUser | Types.ObjectId;
   clients: Types.ObjectId[];
   createdAt: Date;
 }

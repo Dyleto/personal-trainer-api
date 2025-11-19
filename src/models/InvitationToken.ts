@@ -5,7 +5,6 @@ export interface IInvitationToken extends Document {
   coachId: Types.ObjectId;
   token: string;
   expiresAt: Date;
-  usedAt?: Date;
   createdAt: Date;
 }
 
@@ -25,11 +24,10 @@ const InvitationTokenSchema: Schema = new Schema({
     type: Date,
     required: true,
   },
-  usedAt: {
-    type: Date,
-  },
   createdAt: { type: Date, default: Date.now },
 });
+
+InvitationTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const InvitationToken = model<IInvitationToken>(
   "InvitationToken",

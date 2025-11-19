@@ -10,13 +10,15 @@ const requireCoach = async (req: Request, res: Response, next: Function) => {
     const coach = await Coach.findOne({ userId });
 
     if (!coach) {
-      return res.status(403).json({ message: "Access denied" });
+      return res.status(403).json({ message: "Accès refusé" });
     }
+
+    (req as any).coach = coach;
 
     next();
   } catch (error) {
     console.error("Coach check error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Erreur serveur" });
   }
 };
 
@@ -36,13 +38,8 @@ router.post(
         expiresAt: expiresAt,
       });
 
-      const invitationLink = `${
-        process.env.FRONTEND_URL || "http://localhost:5173"
-      }/join?token=${invitationToken.token}`;
-
       res.json({
-        message: "Invitation link generated successfully",
-        invitationLink,
+        message: "Lien d'invitation généré avec succès",
         token: invitationToken.token,
         expiresAt: invitationToken.expiresAt,
       });

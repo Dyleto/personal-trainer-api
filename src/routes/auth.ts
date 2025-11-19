@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import User from "../models/User";
+import User, { IUser } from "../models/User";
 import axios from "axios";
 import { OAuth2Client } from "google-auth-library";
 import Client from "../models/Client";
@@ -16,7 +16,7 @@ router.post("/google-callback", async (req: Request, res: Response) => {
     if (!code) {
       return res
         .status(400)
-        .json({ message: "Authorization code is required" });
+        .json({ message: "Le code d'autorisation est requis" });
     }
 
     //Échanger le code contre un token auprès de Google
@@ -40,7 +40,7 @@ router.post("/google-callback", async (req: Request, res: Response) => {
     });
 
     const payload = ticket.getPayload();
-    if (!payload) throw new Error("Invalid Google token payload");
+    if (!payload) throw new Error("Payload du token Google invalide");
 
     const { email, name, given_name, family_name, picture } = payload!;
 
@@ -54,11 +54,11 @@ router.post("/google-callback", async (req: Request, res: Response) => {
       });
 
       if (!invToken) {
-        return res.status(400).json({ message: "Invalid or expired token" });
+        return res.status(400).json({ message: "Token invalide ou expiré" });
       }
 
       if (new Date() > invToken.expiresAt) {
-        return res.status(400).json({ message: "Token has expired" });
+        return res.status(400).json({ message: "Token expiré" });
       }
 
       // Chercher ou créer l'utilisateur
@@ -84,15 +84,18 @@ router.post("/google-callback", async (req: Request, res: Response) => {
         client = await Client.create({ userId: user._id });
       }
 
-      // Vérifier que le client n'a pas déjà un coach
-      if (client.coachId) {
-        return res.status(400).json({
-          message: "You already have a coach. Please unbind first to change.",
+      // Lier le coach au client
+      const alreadyLinked = client.coaches?.some(
+        (coach) => coach.coachId.toString() === invToken.coachId.toString()
+      );
+
+      if (!alreadyLinked) {
+        client.coaches.push({
+          coachId: invToken.coachId,
+          linkedAt: new Date(),
         });
       }
 
-      // Lier le coach au client
-      client.coachId = invToken.coachId;
       client.linkedAt = new Date();
       await client.save();
 
@@ -107,23 +110,14 @@ router.post("/google-callback", async (req: Request, res: Response) => {
         );
       }
 
-      // Marquer le token comme utilisé
-      invToken.usedAt = new Date();
-      await invToken.save();
-
       // Créer la session
       (req.session as any).userId = user._id;
 
+      const builtUser = await buildUser(user);
+
       return res.json({
         token: id_token,
-        user: {
-          id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
-          picture: user.picture,
-          isAdmin: user.isAdmin,
-        },
+        user: builtUser,
       });
     }
 
@@ -147,77 +141,57 @@ router.post("/google-callback", async (req: Request, res: Response) => {
     // Créer la session
     (req.session as any).userId = user._id;
 
+    const builtUser = await buildUser(user);
+
     res.json({
       token: id_token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        picture: user.picture,
-        isAdmin: user.isAdmin,
-      },
+      user: builtUser,
     });
   } catch (error) {
     console.error("Google OAuth callback error:", error);
-    res.status(401).json({ message: "Authentication failed" });
+    res.status(401).json({ message: "Échec de l'authentification" });
   }
 });
 
-router.post("/join", async (req: Request, res: Response) => {
+router.get("/verify-invite-token", async (req: Request, res: Response) => {
   try {
-    const { token } = req.body;
-    const userId = (req.session as any).userId;
+    const token = req.query.token as string;
 
     if (!token) {
-      return res.status(400).json({ message: "Token is required" });
+      return res.status(400).json({ message: "Token manquant" });
     }
 
-    // Valider le token
     const invitationToken = await InvitationToken.findOne({ token });
 
     if (!invitationToken) {
-      return res.status(400).json({ message: "Invalid or expired token" });
+      return res.status(404).json({ message: "Token invalide" });
     }
 
     if (new Date() > invitationToken.expiresAt) {
-      return res.status(400).json({ message: "Token has expired" });
+      return res.status(410).json({ message: "Token expiré" });
     }
 
-    if (userId) {
-      // Utilisateur déjà connecté
-      const existingClient = await Client.findOne({ userId });
+    const coach = await Coach.findById(invitationToken.coachId).populate(
+      "userId",
+      "firstName lastName, picture"
+    );
+
+    if (!coach?.userId || typeof coach.userId === "string") {
+      return res.status(500).json({ message: "Infos du Coach non trouvé" });
     }
 
-    // Récupérer le client
-    let client = await Client.findOne({ userId });
-    if (!client) {
-      client = await Client.create({ userId });
-    }
-
-    // Vérifier que le client n'a pas déjà un coach
-    if (client.coachId) {
-      return res.status(400).json({
-        message: "You already have a coach. Please unbind first to change.",
-      });
-    }
-
-    // Lier le coach au client
-    client.coachId = invitationToken.coachId;
-    client.linkedAt = new Date();
-    await client.save();
-
-    // Ajouter le client à la liste du coach
-    const coach = await Coach.findById(invitationToken.coachId);
-    if (coach && !coach.clients.includes(userId)) {
-      coach.clients.push(userId);
-      await coach.save();
-    }
-
-    res.json({ message: "Successfully joined coach" });
+    res.json({
+      valid: true,
+      coach: {
+        id: coach?._id,
+        firstName: (coach?.userId as IUser).firstName,
+        lastName: (coach?.userId as IUser).lastName,
+        picture: (coach?.userId as IUser).picture,
+      },
+    });
   } catch (error) {
-    console.error("Join coach error:", error);
-    res.status(500).json({ message: "Error joining coach" });
+    console.error("Verify invite token error:", error);
+    res.status(500).json({ message: "Erreur serveur" });
   }
 });
 
@@ -225,28 +199,40 @@ router.get("/me", async (req: Request, res: Response) => {
   try {
     const userId = (req.session as any).userId;
     if (!userId) {
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(401).json({ message: "Non autorisé" });
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Utilisateur non trouvé" });
     }
 
+    const builtUser = await buildUser(user);
+
     res.json({
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        picture: user.picture,
-        isAdmin: user.isAdmin,
-      },
+      user: builtUser,
     });
   } catch (error) {
     console.error("Fetch user error:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Erreur serveur" });
   }
 });
+
+async function buildUser(user: IUser) {
+  // Vérifier les rôles
+  const isCoach = await Coach.findOne({ userId: user._id });
+  const isClient = await Client.findOne({ userId: user._id });
+
+  return {
+    id: user._id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    picture: user.picture,
+    isAdmin: user.isAdmin,
+    isCoach: !!isCoach,
+    isClient: !!isClient,
+  };
+}
 
 export default router;
