@@ -6,6 +6,7 @@ import routes from "./routes/index";
 import cookieParser from "cookie-parser";
 import session from "express-session";
 import authRoutes from "./routes/auth";
+import MongoStore from "connect-mongo";
 
 dotenv.config();
 const app = express();
@@ -26,6 +27,10 @@ app.use(
     secret: process.env.SESSION_SECRET || "your_secret_key",
     resave: false,
     saveUninitialized: false,
+    store: MongoStore.create({
+      mongoUrl: process.env.MONGO_URI,
+      touchAfter: 24 * 3600, // Lazy session update (1 day)
+    }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
