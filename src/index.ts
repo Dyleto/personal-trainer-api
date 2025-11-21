@@ -24,6 +24,7 @@ app.use(express.json());
 // Session middleware
 app.use(
   session({
+    name: "connect.sid",
     secret: process.env.SESSION_SECRET || "your_secret_key",
     resave: false,
     saveUninitialized: false,
