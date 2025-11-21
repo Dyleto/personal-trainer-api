@@ -11,6 +11,8 @@ import MongoStore from "connect-mongo";
 dotenv.config();
 const app = express();
 
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -28,6 +30,7 @@ app.use(
     secret: process.env.SESSION_SECRET || "your_secret_key",
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     store: MongoStore.create({
       mongoUrl: process.env.MONGO_URI,
       touchAfter: 24 * 3600, // Lazy session update (1 day)
