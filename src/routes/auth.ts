@@ -113,10 +113,16 @@ router.post("/google-callback", async (req: Request, res: Response) => {
       // Créer la session
       (req.session as any).userId = user._id;
 
+      console.log("Cas 1 Session before save:", req.session);
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            console.error("Session save error:", err);
+            reject(err);
+          } else {
+            console.log("Session saved successfully:", req.session);
+            resolve();
+          }
         });
       });
 
@@ -147,10 +153,16 @@ router.post("/google-callback", async (req: Request, res: Response) => {
     // Créer la session
     (req.session as any).userId = user._id;
 
+    console.log("Cas 2 Session before save:", req.session);
     await new Promise<void>((resolve, reject) => {
       req.session.save((err) => {
-        if (err) reject(err);
-        else resolve();
+        if (err) {
+          console.error("Session save error:", err);
+          reject(err);
+        } else {
+          console.log("Session saved successfully:", req.session);
+          resolve();
+        }
       });
     });
 
