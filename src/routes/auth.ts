@@ -113,6 +113,13 @@ router.post("/google-callback", async (req: Request, res: Response) => {
       // Créer la session
       (req.session as any).userId = user._id;
 
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
       const builtUser = await buildUser(user);
 
       return res.json({
@@ -139,6 +146,13 @@ router.post("/google-callback", async (req: Request, res: Response) => {
 
     // Créer la session
     (req.session as any).userId = user._id;
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
 
     const builtUser = await buildUser(user);
 
@@ -196,6 +210,7 @@ router.get("/verify-invite-token", async (req: Request, res: Response) => {
 router.get("/me", async (req: Request, res: Response) => {
   try {
     const userId = (req.session as any).userId;
+
     if (!userId) {
       return res.status(401).json({ message: "Non autorisé" });
     }
