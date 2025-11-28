@@ -15,7 +15,11 @@ app.set("trust proxy", 1);
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: [
+      process.env.FRONTEND_URL || "http://localhost:5173",
+      "https://kettleapp.fr",
+      "https://www.kettleapp.fr",
+    ],
     credentials: true,
   })
 );
@@ -40,6 +44,8 @@ app.use(
       httpOnly: true,
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 day
+      domain:
+        process.env.NODE_ENV === "production" ? ".kettleapp.fr" : undefined,
     },
   })
 );
