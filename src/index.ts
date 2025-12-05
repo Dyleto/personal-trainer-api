@@ -27,6 +27,11 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 
+// Health check endpoint (avant les autres routes)
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // Session middleware
 app.use(
   session({
