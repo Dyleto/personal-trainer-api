@@ -96,19 +96,7 @@ router.post("/google-callback", async (req: Request, res: Response) => {
         });
       }
 
-      client.linkedAt = new Date();
       await client.save();
-
-      // Ajouter le client à la liste du coach
-      const coach = await Coach.findById(invToken.coachId);
-
-      if (coach) {
-        await Coach.findByIdAndUpdate(
-          coach._id,
-          { $addToSet: { clients: user._id } },
-          { new: true }
-        );
-      }
 
       // Créer la session
       (req.session as any).userId = user._id;

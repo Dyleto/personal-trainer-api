@@ -7,16 +7,27 @@ export interface IUser extends Document {
   lastName?: string;
   isAdmin: boolean;
   createdAt: Date;
+  updatedAt: Date;
 }
 
-const UserSchema: Schema = new Schema({
-  email: { type: String, required: true },
-  picture: { type: String },
-  firstName: { type: String },
-  lastName: { type: String },
-  isAdmin: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now },
-});
+const UserSchema: Schema = new Schema(
+  {
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+    picture: { type: String },
+    firstName: { type: String, trim: true },
+    lastName: { type: String, trim: true },
+    isAdmin: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+UserSchema.index({ email: 1 });
 
 const User = model<IUser>("User", UserSchema);
 

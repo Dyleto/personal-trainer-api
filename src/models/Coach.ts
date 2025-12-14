@@ -1,22 +1,25 @@
-import { model, Schema, Types } from "mongoose";
+import { model, Schema, Types, Document } from "mongoose";
 import { IUser } from "./User";
 
 export interface ICoach extends Document {
   userId: IUser | Types.ObjectId;
-  clients: Types.ObjectId[];
   createdAt: Date;
+  updatedAt: Date;
 }
 
-const CoachSchema: Schema = new Schema({
-  userId: {
-    type: Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-    unique: true,
+const CoachSchema: Schema = new Schema(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+    },
   },
-  clients: [{ type: Schema.Types.ObjectId, ref: "Client" }],
-  createdAt: { type: Date, default: Date.now },
-});
+  { timestamps: true }
+);
+
+CoachSchema.index({ userId: 1 });
 
 const Coach = model<ICoach>("Coach", CoachSchema);
 

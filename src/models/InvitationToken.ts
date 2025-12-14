@@ -1,4 +1,4 @@
-import { model, Schema, Types } from "mongoose";
+import { model, Schema, Types, Document } from "mongoose";
 import { randomBytes } from "crypto";
 
 export interface IInvitationToken extends Document {
