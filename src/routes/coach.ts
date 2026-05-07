@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { requireCoach } from "../middleware/roles";
 import * as coachController from "../controllers/coachController";
+import { validate } from "../middleware/validate";
+import {
+  createExerciseSchema,
+  updateExerciseSchema,
+} from "../schemas/exerciseSchema";
+import { updateProgramSessionsSchema } from "../schemas/programSchema";
 
 const router = Router();
 
@@ -22,15 +28,24 @@ router.patch(
 // PROGRAMMES & SESSIONS
 router.put(
   "/clients/:clientId/program/sessions",
+  validate(updateProgramSessionsSchema),
   coachController.updateProgramSessions,
 );
 
 // EXERCICES
 router.get("/exercises/stats", coachController.getExercisesStats);
 router.get("/exercises", coachController.getExercises);
-router.post("/exercises", coachController.createExercise);
+router.post(
+  "/exercises",
+  validate(createExerciseSchema),
+  coachController.createExercise,
+);
 router.get("/exercises/:id", coachController.getExerciseDetails);
-router.put("/exercises/:id", coachController.updateExercise);
+router.put(
+  "/exercises/:id",
+  validate(updateExerciseSchema),
+  coachController.updateExercise,
+);
 router.delete("/exercises/:id", coachController.deleteExercise);
 
 export default router;

@@ -2,6 +2,7 @@ import { model, Schema, Types, Document } from "mongoose";
 import { IUser } from "./User";
 
 export interface ICoach extends Document {
+  _id: Types.ObjectId;
   userId: IUser | Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;

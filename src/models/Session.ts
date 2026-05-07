@@ -1,74 +1,97 @@
 import { model, Schema, Types, Document } from "mongoose";
 
+export type BlockType =
+  | "warmup"
+  | "emom"
+  | "every"
+  | "amrap"
+  | "timecap"
+  | "chipper"
+  | "classic"
+  | "tabata"
+  | "onoff"
+  | "pyramid"
+  | "ladder";
+
+export const BLOCK_TYPES: BlockType[] = [
+  "warmup", "emom", "every", "amrap", "timecap",
+  "chipper", "classic", "tabata", "onoff", "pyramid", "ladder",
+];
+
+export interface IBlockExercise {
+  exerciseId: Types.ObjectId;
+  order: number;
+  sets?: number;
+  restBetweenSets?: number;
+  reps?: number;
+  duration?: number;
+  customMetric?: { value: number; unit: string };
+}
+
+export interface ISessionBlock {
+  type: BlockType;
+  label?: string;
+  order: number;
+  notes?: string;
+  durationMinutes?: number;
+  intervalMinutes?: number;
+  rounds?: number;
+  restBetweenRounds?: number;
+  workDuration?: number;
+  restDuration?: number;
+  repsScheme?: number[];
+  exercises: IBlockExercise[];
+}
+
 export interface ISession extends Document {
   programId: Types.ObjectId;
   order: number;
   notes?: string;
-  warmup: {
-    exercises: {
-      exerciseId: Types.ObjectId;
-      mode: "timer" | "reps";
-      duration?: number;
-      reps?: number;
-    }[];
-  };
-  workout: {
-    rounds: number;
-    restBetweenRounds?: number;
-    exercises: {
-      exerciseId: Types.ObjectId;
-      mode: "timer" | "reps";
-      sets?: number;
-      reps?: number;
-      duration?: number;
-      restBetweenSets?: number;
-    }[];
-  };
+  blocks: ISessionBlock[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-const SessionSchema = new Schema(
+const blockExerciseSchema = new Schema(
   {
-    programId: {
-      type: Schema.Types.ObjectId,
-      ref: "Program",
-      required: true,
+    exerciseId: { type: Schema.Types.ObjectId, ref: "Exercise", required: true },
+    order: { type: Number, required: true },
+    sets: { type: Number, min: 1 },
+    restBetweenSets: { type: Number, min: 0 },
+    reps: { type: Number, min: 0 },
+    duration: { type: Number, min: 0 },
+    customMetric: {
+      value: { type: Number },
+      unit: { type: String, trim: true },
     },
+  },
+  { _id: false },
+);
+
+const sessionBlockSchema = new Schema(
+  {
+    type: { type: String, enum: BLOCK_TYPES, required: true },
+    label: { type: String, trim: true },
     order: { type: Number, required: true },
     notes: { type: String },
-    warmup: {
-      exercises: [
-        {
-          exerciseId: {
-            type: Schema.Types.ObjectId,
-            ref: "Exercise",
-            required: true,
-          },
-          mode: { type: String, enum: ["timer", "reps"], required: true },
-          duration: { type: Number, min: 0 },
-          reps: { type: Number, min: 0 },
-        },
-      ],
-    },
-    workout: {
-      rounds: { type: Number, required: true, min: 1 },
-      restBetweenRounds: { type: Number, min: 0 },
-      exercises: [
-        {
-          exerciseId: {
-            type: Schema.Types.ObjectId,
-            ref: "Exercise",
-            required: true,
-          },
-          mode: { type: String, enum: ["timer", "reps"], required: true },
-          sets: { type: Number, min: 0 },
-          reps: { type: Number, min: 0 },
-          restBetweenSets: { type: Number, min: 0 },
-          duration: { type: Number, min: 0 },
-        },
-      ],
-    },
+    durationMinutes: { type: Number, min: 1 },
+    intervalMinutes: { type: Number, min: 1 },
+    rounds: { type: Number, min: 1 },
+    restBetweenRounds: { type: Number, min: 0 },
+    workDuration: { type: Number, min: 1 },
+    restDuration: { type: Number, min: 0 },
+    repsScheme: [{ type: Number, min: 1 }],
+    exercises: [blockExerciseSchema],
+  },
+  { _id: true },
+);
+
+const SessionSchema = new Schema(
+  {
+    programId: { type: Schema.Types.ObjectId, ref: "Program", required: true },
+    order: { type: Number, required: true },
+    notes: { type: String },
+    blocks: [sessionBlockSchema],
   },
   { timestamps: true },
 );

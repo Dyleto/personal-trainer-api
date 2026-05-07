@@ -1,30 +1,36 @@
-﻿import { model, Schema, Types, Document } from "mongoose";
+import { model, Schema, Types, Document } from "mongoose";
+
+export interface IBlockExerciseSnapshot {
+  exercise: Record<string, unknown>;
+  order: number;
+  sets?: number;
+  restBetweenSets?: number;
+  reps?: number;
+  duration?: number;
+  customMetric?: { value: number; unit: string };
+}
+
+export interface IBlockSnapshot {
+  type: string;
+  label?: string;
+  order: number;
+  notes?: string;
+  durationMinutes?: number;
+  intervalMinutes?: number;
+  rounds?: number;
+  restBetweenRounds?: number;
+  workDuration?: number;
+  restDuration?: number;
+  repsScheme?: number[];
+  exercises: IBlockExerciseSnapshot[];
+}
 
 export interface ICompletedSession extends Document {
   clientId: Types.ObjectId;
   programId: Types.ObjectId;
   originalSessionId: Types.ObjectId;
   sessionOrder: number;
-  warmup?: {
-    exercises: {
-      exercise: Record<string, unknown>;
-      mode: "timer" | "reps";
-      duration?: number;
-      reps?: number;
-    }[];
-  };
-  workout: {
-    rounds: number;
-    restBetweenRounds?: number;
-    exercises: {
-      exercise: Record<string, unknown>;
-      mode: "timer" | "reps";
-      sets?: number;
-      reps?: number;
-      duration?: number;
-      restBetweenSets?: number;
-    }[];
-  };
+  blocks: IBlockSnapshot[];
   coachNotes?: string;
   metrics: {
     stress: number;
@@ -38,45 +44,51 @@ export interface ICompletedSession extends Document {
   completedAt: Date;
 }
 
-const exerciseSnapshotFields = {
-  exercise: { type: Schema.Types.Mixed, required: true },
-  mode: { type: String, enum: ["timer", "reps"], required: true },
-  duration: { type: Number, min: 0 },
-  reps: { type: Number, min: 0 },
-};
+const exerciseSnapshotSchema = new Schema(
+  {
+    exercise: { type: Schema.Types.Mixed, required: true },
+    order: { type: Number, required: true },
+    sets: { type: Number },
+    restBetweenSets: { type: Number },
+    reps: { type: Number },
+    duration: { type: Number },
+    customMetric: {
+      value: { type: Number },
+      unit: { type: String },
+    },
+  },
+  { _id: false },
+);
+
+const blockSnapshotSchema = new Schema(
+  {
+    type: { type: String, required: true },
+    label: { type: String },
+    order: { type: Number, required: true },
+    notes: { type: String },
+    durationMinutes: { type: Number },
+    intervalMinutes: { type: Number },
+    rounds: { type: Number },
+    restBetweenRounds: { type: Number },
+    workDuration: { type: Number },
+    restDuration: { type: Number },
+    repsScheme: [{ type: Number }],
+    exercises: [exerciseSnapshotSchema],
+  },
+  { _id: false },
+);
 
 const CompletedSessionSchema = new Schema(
   {
-    clientId: {
-      type: Schema.Types.ObjectId,
-      ref: "Client",
-      required: true,
-    },
-    programId: {
-      type: Schema.Types.ObjectId,
-      ref: "Program",
-      required: true,
-    },
+    clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
+    programId: { type: Schema.Types.ObjectId, ref: "Program", required: true },
     originalSessionId: {
       type: Schema.Types.ObjectId,
       ref: "Session",
       required: true,
     },
     sessionOrder: { type: Number, required: true },
-    warmup: {
-      exercises: [exerciseSnapshotFields],
-    },
-    workout: {
-      rounds: { type: Number, required: true, min: 1 },
-      restBetweenRounds: { type: Number, min: 0 },
-      exercises: [
-        {
-          ...exerciseSnapshotFields,
-          sets: { type: Number, min: 0 },
-          restBetweenSets: { type: Number, min: 0 },
-        },
-      ],
-    },
+    blocks: [blockSnapshotSchema],
     coachNotes: { type: String },
     metrics: {
       stress: { type: Number, required: true, min: 1, max: 5 },

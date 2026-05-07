@@ -14,6 +14,10 @@ import { httpLogger } from "./middleware/httpLogger";
 import mongoSanitize from "express-mongo-sanitize";
 
 dotenv.config();
+
+import { validateEnv } from "./config/env";
+validateEnv();
+
 const app = express();
 
 app.set("trust proxy", 1);
@@ -58,7 +62,7 @@ app.get("/health", (req, res) => {
 app.use(
   session({
     name: "connect.sid",
-    secret: process.env.SESSION_SECRET || "your_secret_key",
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     proxy: true,

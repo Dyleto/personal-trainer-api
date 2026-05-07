@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import crypto from "crypto";
 import { catchAsync } from "../utils/catchAsync";
 import { AppError } from "../utils/AppError";
 import { ICoach } from "../models/Coach";
@@ -7,10 +6,11 @@ import InvitationToken from "../models/InvitationToken";
 import Client from "../models/Client";
 import Exercise from "../models/Exercise";
 import { IUser } from "../models/User";
-import Program from "../models/Program";
 import Session from "../models/Session";
-import { isValidObjectId } from "mongoose";
+import mongoose, { isValidObjectId, Types } from "mongoose";
 import CompletedSession from "../models/CompletedSession";
+import { getAuthorizedClient } from "../services/coachService";
+import { getOrCreate } from "../services/programService";
 
 // --------------------------------------------------------------------------
 // INVITATIONS
@@ -35,15 +35,9 @@ export const generateInvitation = catchAsync(
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + expiresIn);
 
-      // On génère le token nous-mêmes si le modèle ne le fait pas auto (via crypto)
-      // Note: Votre modèle InvitationToken le génère peut-être via un pre-hook.
-      // Sinon voici comment faire :
-      const token = crypto.randomBytes(32).toString("hex");
-
       invitationToken = await InvitationToken.create({
-        token,
         coachId: coach._id,
-        expiresAt: expiresAt,
+        expiresAt,
       });
     }
 
@@ -65,57 +59,62 @@ export const generateInvitation = catchAsync(
 export const getClients = catchAsync(async (req: Request, res: Response) => {
   const coach = res.locals.coach as ICoach;
 
-  const clients = await Client.find({
-    "coaches.coachId": coach._id,
-  }).populate<{ userId: IUser }>("userId");
-
-  const clientIds = clients.map((c) => c._id);
-  const unseenCounts = await CompletedSession.aggregate([
-    { $match: { clientId: { $in: clientIds }, viewedByCoach: { $ne: true } } },
-    { $group: { _id: "$clientId", count: { $sum: 1 } } },
+  const clients = await Client.aggregate([
+    { $match: { "coaches.coachId": coach._id } },
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "userDoc",
+      },
+    },
+    { $unwind: "$userDoc" },
+    {
+      $lookup: {
+        from: "completedsessions",
+        let: { clientId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$clientId", "$$clientId"] },
+              viewedByCoach: { $ne: true },
+            },
+          },
+          { $count: "total" },
+        ],
+        as: "unseenData",
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        firstName: "$userDoc.firstName",
+        lastName: "$userDoc.lastName",
+        picture: "$userDoc.picture",
+        unseenCount: {
+          $ifNull: [{ $arrayElemAt: ["$unseenData.total", 0] }, 0],
+        },
+      },
+    },
   ]);
 
-  const unseenMap = Object.fromEntries(
-    unseenCounts.map((uc) => [uc._id.toString(), uc.count]),
-  );
-
-  const formattedClients = clients.map((client) => ({
-    _id: client._id,
-    firstName: client.userId.firstName,
-    lastName: client.userId.lastName,
-    picture: client.userId.picture,
-    unseenCount: unseenMap[client._id.toString()] ?? 0,
-  }));
-
-  res.status(200).json(formattedClients);
+  res.status(200).json(clients);
 });
 
 export const getClientDetails = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
-    const { id: clientId } = req.params;
+    const clientId = req.params.id as string;
 
-    const client = await Client.findOne({
-      _id: clientId,
-      "coaches.coachId": coach._id,
-    }).populate<{ userId: IUser }>("userId");
+    const rawClient = await getAuthorizedClient(coach._id, clientId);
+    const client = await rawClient.populate<{ userId: IUser }>("userId");
 
-    if (!client) throw new AppError("Client non trouvé", 404);
-
-    let program = await Program.findOne({
-      clientId: client._id,
-    });
-
-    if (!program) {
-      program = await Program.create({
-        clientId: client._id,
-      });
-    }
+    const program = await getOrCreate(client._id);
 
     const sessions = await Session.find({ programId: program._id })
       .sort({ order: 1 })
-      .populate("warmup.exercises.exerciseId")
-      .populate("workout.exercises.exerciseId");
+      .populate("blocks.exercises.exerciseId");
 
     const unseenCount = await CompletedSession.countDocuments({
       clientId: client._id,
@@ -140,17 +139,17 @@ export const getClientDetails = catchAsync(
 export const getClientHistory = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
-    const { id: clientId } = req.params;
+    const clientId = req.params.id as string;
 
-    const client = await Client.findOne({
-      _id: clientId,
-      "coaches.coachId": coach._id,
-    });
-    if (!client) throw new AppError("Client non trouvé", 404);
+    const client = await getAuthorizedClient(coach._id, clientId);
 
-    const history = await CompletedSession.find({ clientId }).sort({
-      completedAt: -1,
-    });
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+
+    const history = await CompletedSession.find({ clientId: client._id })
+      .sort({ completedAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
     res.status(200).json(history);
   },
@@ -159,13 +158,9 @@ export const getClientHistory = catchAsync(
 export const markHistoryAsViewed = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
-    const { id: clientId } = req.params;
+    const clientId = req.params.id as string;
 
-    const client = await Client.findOne({
-      _id: clientId,
-      "coaches.coachId": coach._id,
-    });
-    if (!client) throw new AppError("Client non trouvé", 404);
+    const client = await getAuthorizedClient(coach._id, clientId);
 
     await CompletedSession.updateMany(
       { clientId, viewedByCoach: { $ne: true } },
@@ -222,12 +217,6 @@ export const createExercise = catchAsync(
     const coach = res.locals.coach as ICoach;
     const { name, description, videoUrl, type } = req.body;
 
-    // Validation manuelle rapide (idéalement à déplacer dans Zod)
-    if (!name || !type) throw new AppError("Nom et type sont requis", 400);
-    if (!["warmup", "workout"].includes(type)) {
-      throw new AppError("Type invalide (warmup/workout)", 400);
-    }
-
     const exercise = await Exercise.create({
       name,
       description: description || "",
@@ -245,10 +234,6 @@ export const updateExercise = catchAsync(
     const coach = res.locals.coach as ICoach;
     const { id } = req.params;
     const { name, description, videoUrl, type } = req.body;
-
-    if (type && !["warmup", "workout"].includes(type)) {
-      throw new AppError("Type invalide", 400);
-    }
 
     const exercise = await Exercise.findOne({ _id: id, createdBy: coach._id });
     if (!exercise) throw new AppError("Exercice non trouvé", 404);
@@ -301,72 +286,82 @@ export const deleteExercise = catchAsync(
 export const updateProgramSessions = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
-    const { clientId } = req.params;
+    const clientId = req.params.clientId as string;
     const { sessions } = req.body;
 
-    if (!Array.isArray(sessions)) {
-      throw new AppError("Le champ 'sessions' doit être un tableau", 400);
-    }
+    const client = await getAuthorizedClient(coach._id, clientId);
+    const program = await getOrCreate(client._id);
 
-    const client = await Client.findOne({
-      _id: clientId,
-      "coaches.coachId": coach._id,
-    });
+    type SessionInput = {
+      _id?: string;
+      notes?: string;
+      blocks?: unknown;
+    };
 
-    if (!client) throw new AppError("Client non trouvé ou accès refusé", 404);
+    const dbSession = await mongoose.startSession();
+    let updatedSessions;
 
-    let program = await Program.findOne({ clientId });
+    try {
+      await dbSession.withTransaction(async () => {
+        const existingSessionIds = await Session.find({
+          programId: program._id,
+        })
+          .select("_id")
+          .session(dbSession);
 
-    if (!program) {
-      program = await Program.create({ clientId });
-    }
+        const existingIds = existingSessionIds.map((s) =>
+          (s._id as Types.ObjectId).toString(),
+        );
 
-    const existingSessionIds = await Session.find({
-      programId: program._id,
-    }).select("_id");
-    const existingIds = existingSessionIds.map((s: any) => s._id.toString());
+        const incomingIds = (sessions as SessionInput[])
+          .filter((s) => s._id)
+          .map((s) => s._id as string);
 
-    const incomingIds = sessions
-      .filter((s: any) => s._id)
-      .map((s: any) => s._id);
+        const idsToDelete = existingIds.filter(
+          (id) => !incomingIds.includes(id),
+        );
 
-    const idsToDelete = existingIds.filter((id) => !incomingIds.includes(id));
+        if (idsToDelete.length > 0) {
+          await Session.deleteMany(
+            { _id: { $in: idsToDelete }, programId: program._id },
+            { session: dbSession },
+          );
+        }
 
-    if (idsToDelete.length > 0) {
-      await Session.deleteMany({
-        _id: { $in: idsToDelete },
-        programId: program._id,
+        const operations = (sessions as SessionInput[]).map(
+          (sessionData, index) => {
+            const payload = {
+              notes: sessionData.notes,
+              blocks: sessionData.blocks,
+              programId: program._id,
+              order: index + 1,
+            };
+
+            if (
+              sessionData._id &&
+              isValidObjectId(sessionData._id) &&
+              existingIds.includes(sessionData._id)
+            ) {
+              return Session.findByIdAndUpdate(sessionData._id, payload, {
+                new: true,
+                session: dbSession,
+              });
+            } else {
+              return Session.create([payload], { session: dbSession });
+            }
+          },
+        );
+
+        await Promise.all(operations);
+
+        updatedSessions = await Session.find({ programId: program._id })
+          .sort({ order: 1 })
+          .populate("blocks.exercises.exerciseId")
+          .session(dbSession);
       });
+    } finally {
+      dbSession.endSession();
     }
-
-    const operations = sessions.map((sessionData: any, index: number) => {
-      const sessionPayload = {
-        notes: sessionData.notes,
-        warmup: sessionData.warmup,
-        workout: sessionData.workout,
-        programId: program._id,
-        order: index + 1,
-      };
-
-      if (
-        sessionData._id &&
-        isValidObjectId(sessionData._id) &&
-        existingIds.includes(sessionData._id)
-      ) {
-        return Session.findByIdAndUpdate(sessionData._id, sessionPayload, {
-          new: true,
-        });
-      } else {
-        return Session.create(sessionPayload);
-      }
-    });
-
-    await Promise.all(operations);
-
-    const updatedSessions = await Session.find({ programId: program._id })
-      .sort({ order: 1 })
-      .populate("warmup.exercises.exerciseId")
-      .populate("workout.exercises.exerciseId");
 
     res.status(200).json(updatedSessions);
   },
