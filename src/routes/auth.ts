@@ -4,6 +4,7 @@ import { googleAuthSchema } from "../schemas/authSchema";
 import rateLimit from "express-rate-limit";
 import {
   googleAuthCallback,
+  googleOneTapCallback,
   getMe,
   logout,
   verifyInviteToken,
@@ -23,6 +24,7 @@ router.post(
   validate(googleAuthSchema),
   googleAuthCallback,
 );
+router.post("/google-onetap", authLimiter, googleOneTapCallback);
 router.get("/me", getMe);
 router.post("/logout", logout);
 router.get("/verify-invite-token", verifyInviteToken);

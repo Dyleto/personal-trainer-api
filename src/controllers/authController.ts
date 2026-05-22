@@ -8,6 +8,7 @@ import { AppError } from "../utils/AppError";
 import { buildUser } from "../services/userService";
 import {
   exchangeGoogleCode,
+  verifyGoogleCredential,
   findOrCreateUser,
   linkClientToCoach,
   validateInvitationToken,
@@ -27,6 +28,31 @@ export const googleAuthCallback = catchAsync(
         invToken.coachId as Types.ObjectId,
       );
     }
+
+    const user = await User.findOne({ email: payload.email });
+    if (!user)
+      throw new AppError("Utilisateur inconnu. Contactez votre coach.", 401);
+
+    if (payload.picture && payload.picture !== user.picture) {
+      user.picture = payload.picture;
+      await user.save();
+    }
+
+    req.session.userId = (user._id as string).toString();
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
+
+    const builtUser = await buildUser(user);
+    res.status(200).json({ status: "success", user: builtUser });
+  },
+);
+
+export const googleOneTapCallback = catchAsync(
+  async (req: Request, res: Response) => {
+    const { credential } = req.body;
+
+    const payload = await verifyGoogleCredential(credential);
 
     const user = await User.findOne({ email: payload.email });
     if (!user)

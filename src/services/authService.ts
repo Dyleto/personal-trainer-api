@@ -8,6 +8,19 @@ import { AppError } from "../utils/AppError";
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+export const verifyGoogleCredential = async (
+  credential: string,
+): Promise<TokenPayload> => {
+  const ticket = await googleClient.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  if (!payload || !payload.email)
+    throw new AppError("Token Google One Tap invalide", 401);
+  return payload;
+};
+
 export const exchangeGoogleCode = async (
   code: string,
   redirectUri: string,
