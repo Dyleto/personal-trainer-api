@@ -5,12 +5,48 @@ import { ICoach } from "../models/Coach";
 import InvitationToken from "../models/InvitationToken";
 import Client from "../models/Client";
 import Exercise from "../models/Exercise";
+import { IExercise } from "../models/Exercise";
 import { IUser } from "../models/User";
 import Session from "../models/Session";
+import { ISessionBlock } from "../models/Session";
 import mongoose, { isValidObjectId, Types } from "mongoose";
 import CompletedSession from "../models/CompletedSession";
 import { getAuthorizedClient } from "../services/coachService";
 import { getOrCreate } from "../services/programService";
+
+type PopulatedBlockExercise = {
+  exerciseId: IExercise;
+  order: number;
+  sets?: number;
+  restBetweenSets?: number;
+  reps?: number;
+  duration?: number;
+  customMetric?: { value: number; unit: string };
+};
+
+type PopulatedBlock = Omit<ISessionBlock, "exercises"> & {
+  exercises: PopulatedBlockExercise[];
+};
+
+type PopulatedSession = {
+  _id: unknown;
+  order: number;
+  notes?: string;
+  blocks: PopulatedBlock[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const formatSession = (session: PopulatedSession) => ({
+  ...session,
+  blocks: session.blocks.map((block) => ({
+    ...block,
+    exercises: block.exercises.map(({ exerciseId, ...rest }) => ({
+      ...rest,
+      exercise: exerciseId,
+    })),
+  })),
+});
 
 // --------------------------------------------------------------------------
 // INVITATIONS
@@ -112,9 +148,12 @@ export const getClientDetails = catchAsync(
 
     const program = await getOrCreate(client._id);
 
-    const sessions = await Session.find({ programId: program._id })
+    const rawSessions = await Session.find({ programId: program._id })
       .sort({ order: 1 })
-      .populate("blocks.exercises.exerciseId");
+      .populate("blocks.exercises.exerciseId")
+      .lean();
+
+    const sessions = (rawSessions as unknown as PopulatedSession[]).map(formatSession);
 
     const unseenCount = await CompletedSession.countDocuments({
       clientId: client._id,
@@ -179,23 +218,16 @@ export const getExercisesStats = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
 
-    // On peut faire les 2 requêtes en parallèle pour aller plus vite
-    const [warmupCount, workoutCount] = await Promise.all([
-      Exercise.countDocuments({ createdBy: coach._id, type: "warmup" }),
-      Exercise.countDocuments({ createdBy: coach._id, type: "workout" }),
-    ]);
+    const count = await Exercise.countDocuments({ createdBy: coach._id });
 
-    res.status(200).json({ warmupCount, workoutCount });
+    res.status(200).json({ count });
   },
 );
 
 export const getExercises = catchAsync(async (req: Request, res: Response) => {
   const coach = res.locals.coach as ICoach;
 
-  const exercises = await Exercise.find({ createdBy: coach._id }).sort({
-    type: 1,
-    name: 1,
-  });
+  const exercises = await Exercise.find({ createdBy: coach._id }).sort({ name: 1 });
 
   res.status(200).json(exercises);
 });
@@ -215,13 +247,12 @@ export const getExerciseDetails = catchAsync(
 export const createExercise = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
-    const { name, description, videoUrl, type } = req.body;
+    const { name, description, videoUrl } = req.body;
 
     const exercise = await Exercise.create({
       name,
       description: description || "",
       videoUrl: videoUrl || "",
-      type,
       createdBy: coach._id,
     });
 
@@ -233,18 +264,16 @@ export const updateExercise = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
     const { id } = req.params;
-    const { name, description, videoUrl, type } = req.body;
+    const { name, description, videoUrl } = req.body;
 
     const exercise = await Exercise.findOne({ _id: id, createdBy: coach._id });
     if (!exercise) throw new AppError("Exercice non trouvé", 404);
 
-    // Mise à jour des champs
     if (name) exercise.name = name;
     if (description !== undefined) exercise.description = description;
     if (videoUrl !== undefined) exercise.videoUrl = videoUrl;
-    if (type) exercise.type = type;
 
-    await exercise.save(); // Déclenche les validateurs Mongoose et hooks
+    await exercise.save();
 
     res.status(200).json(exercise);
   },
@@ -255,12 +284,8 @@ export const deleteExercise = catchAsync(
     const coach = res.locals.coach as ICoach;
     const { id } = req.params;
 
-    // Vérifier si l'exercice est utilisé dans des sessions
     const usedInSession = await Session.findOne({
-      $or: [
-        { "warmup.exercises.exerciseId": id },
-        { "workout.exercises.exerciseId": id },
-      ],
+      "blocks.exercises.exerciseId": id,
     });
 
     if (usedInSession) {
@@ -357,12 +382,14 @@ export const updateProgramSessions = catchAsync(
         updatedSessions = await Session.find({ programId: program._id })
           .sort({ order: 1 })
           .populate("blocks.exercises.exerciseId")
+          .lean()
           .session(dbSession);
       });
     } finally {
       dbSession.endSession();
     }
 
-    res.status(200).json(updatedSessions);
+    const formatted = (updatedSessions as unknown as PopulatedSession[]).map(formatSession);
+    res.status(200).json(formatted);
   },
 );

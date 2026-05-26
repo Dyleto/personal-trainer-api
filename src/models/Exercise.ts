@@ -4,7 +4,6 @@ export interface IExercise extends Document {
   name: string;
   description?: string;
   videoUrl?: string;
-  type: "warmup" | "workout";
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -18,17 +17,11 @@ const ExerciseSchema = new Schema(
       type: String,
       validate: {
         validator: function (v: string) {
-          if (!v) return true; // Optionnel
+          if (!v) return true;
           return /^https?:\/\/.+/.test(v);
         },
         message: "URL de vidéo invalide",
       },
-    },
-    type: {
-      type: String,
-      enum: ["warmup", "workout"],
-      required: true,
-      default: "workout",
     },
     createdBy: { type: Schema.Types.ObjectId, ref: "Coach", required: true },
   },
@@ -37,7 +30,6 @@ const ExerciseSchema = new Schema(
 
 ExerciseSchema.index({ createdBy: 1 });
 ExerciseSchema.index({ createdBy: 1, name: 1 });
-ExerciseSchema.index({ createdBy: 1, type: 1 });
 
 const Exercise = model<IExercise>("Exercise", ExerciseSchema);
 

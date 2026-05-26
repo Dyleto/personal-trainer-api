@@ -4,10 +4,10 @@ import { BLOCK_TYPES } from "../models/Session";
 const blockExerciseSchema = z.object({
   exerciseId: z.string().min(1),
   order: z.number().int().min(1),
-  sets: z.number().int().min(1).optional(),
-  restBetweenSets: z.number().min(0).optional(),
-  reps: z.number().int().min(0).optional(),
-  duration: z.number().min(0).optional(),
+  sets: z.number().int().min(0).optional().default(0),
+  restBetweenSets: z.number().min(0).optional().default(0),
+  reps: z.number().int().min(0).optional().default(0),
+  duration: z.number().min(0).optional().default(0),
   customMetric: z
     .object({
       value: z.number(),
