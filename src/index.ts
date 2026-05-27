@@ -22,6 +22,22 @@ const app = express();
 
 app.set("trust proxy", 1);
 
+// CORS en premier — doit précéder tout middleware qui peut rejeter des requêtes,
+// sinon les réponses d'erreur (429, 5xx…) n'ont pas les headers CORS et le
+// navigateur affiche une "CORS error" masquant le vrai problème.
+app.use(
+  cors({
+    origin: [
+      process.env.FRONTEND_URL || "http://localhost:5173",
+      "https://kettleapp.fr",
+      "https://www.kettleapp.fr",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+
 app.use(helmet());
 
 // Sécurité Injection NoSQL
@@ -31,24 +47,16 @@ app.use(httpLogger);
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limite chaque IP à 100 requêtes par "windowMs"
-  standardHeaders: true, // Retourne les infos de rate limit dans les headers `RateLimit-*`
-  legacyHeaders: false, // Désactive les headers `X-RateLimit-*`
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: "Trop de requêtes depuis cette IP, veuillez réessayer plus tard.",
+  // Ne pas rate-limiter les preflight OPTIONS : ils ne consomment pas de ressources
+  // et les bloquer masque les vraies erreurs CORS.
+  skip: (req) => req.method === "OPTIONS",
 });
 
 app.use(limiter);
-
-app.use(
-  cors({
-    origin: [
-      process.env.FRONTEND_URL || "http://localhost:5173",
-      "https://kettleapp.fr",
-      "https://www.kettleapp.fr",
-    ],
-    credentials: true,
-  }),
-);
 
 app.use(cookieParser());
 app.use(express.json());
