@@ -1,5 +1,7 @@
 import winston from "winston";
 
+const isDev = process.env.NODE_ENV === "development";
+
 const levels = {
   error: 0,
   warn: 1,
@@ -18,21 +20,33 @@ const colors = {
 
 winston.addColors(colors);
 
-const format = winston.format.combine(
-  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
-  // En dev, on veut de la couleur. En prod, on veut du JSON pur.
-  process.env.NODE_ENV === "development"
-    ? winston.format.colorize({ all: true })
-    : winston.format.uncolorize(),
-  winston.format.printf(
-    (info) => `${info.timestamp} ${info.level}: ${info.message}`,
-  ),
+/**
+ * En développement  : texte coloré lisible
+ * En production     : JSON structuré (une ligne par log, facile à parser/grep)
+ */
+const devFormat = winston.format.combine(
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+  winston.format.colorize({ all: true }),
+  winston.format.printf(({ timestamp, level, message, ...meta }) => {
+    const metaStr = Object.keys(meta).length
+      ? " " + JSON.stringify(meta)
+      : "";
+    return `${timestamp} ${level}: ${message}${metaStr}`;
+  }),
+);
+
+const prodFormat = winston.format.combine(
+  winston.format.timestamp(),
+  winston.format.errors({ stack: true }),
+  winston.format.json(),
 );
 
 const logger = winston.createLogger({
-  level: process.env.NODE_ENV === "development" ? "debug" : "warn",
+  // En prod on veut "info" et plus : ça couvre les logs opérationnels importants
+  // sans être aussi bavard que debug.
+  level: isDev ? "debug" : "info",
   levels,
-  format,
+  format: isDev ? devFormat : prodFormat,
   transports: [new winston.transports.Console()],
 });
 

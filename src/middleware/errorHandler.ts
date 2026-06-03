@@ -8,22 +8,35 @@ export const globalErrorHandler = (
   res: Response,
   next: NextFunction,
 ) => {
-  // Valeurs par défaut
   let statusCode = (err as AppError).statusCode || 500;
-  let status = (err as AppError).status || "error";
   let message = err.message;
 
-  if (statusCode === 500) {
-    logger.error(`💥 ${err.message}`, {
+  const requestId = (req as any).requestId ?? "?";
+  const userId = req.session?.userId ?? "anonymous";
+
+  const context = {
+    requestId,
+    userId,
+    method: req.method,
+    url: req.originalUrl,
+    // On logue les clés du body (pas les valeurs) pour éviter de loguer des mots de passe
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    params: req.params,
+  };
+
+  if (statusCode >= 500) {
+    logger.error(`💥 [${requestId}] ${err.message}`, {
+      ...context,
       stack: err.stack,
-      url: req.originalUrl,
     });
+  } else if (statusCode === 401 || statusCode === 403) {
+    // Auth/authz failures : on veut voir ces cas en prod
+    logger.warn(`🔒 [${requestId}] ${statusCode} ${err.message}`, context);
   } else {
-    // Si c'est une erreur opérationnelle (4xx), un simple warning suffit
-    logger.warn(`⚠️ ${err.message} (${req.originalUrl})`);
+    logger.warn(`⚠️  [${requestId}] ${statusCode} ${err.message}`, context);
   }
 
-  // Gestion spécifique de certaines erreurs (ex: Mongoose, JWT)
+  // Erreurs Mongoose/JWT normalisées
   if (err.name === "CastError") {
     message = "Ressource introuvable (ID invalide)";
     statusCode = 400;
@@ -37,15 +50,15 @@ export const globalErrorHandler = (
     statusCode = 401;
   }
 
-  // En prod, on ne veut pas fuiter les détails techniques des erreurs 500
+  // En prod, on masque les détails des erreurs 500
   if (process.env.NODE_ENV === "production" && statusCode === 500) {
     message = "Une erreur interne est survenue";
   }
 
   res.status(statusCode).json({
-    status,
+    status: statusCode >= 500 ? "error" : "fail",
     message,
-    // On affiche la stack trace seulement en dev
+    requestId, // Permet au frontend de reporter l'ID pour debug
     stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 };

@@ -6,22 +6,34 @@ import Exercise from "../models/Exercise";
 import CompletedSession from "../models/CompletedSession";
 import { catchAsync } from "../utils/catchAsync";
 import { AppError } from "../utils/AppError";
+import logger from "../utils/logger";
 
 export const createCoach = catchAsync(async (req: Request, res: Response) => {
   const { email, firstName, lastName } = req.body;
+  const rid = (req as any).requestId ?? "?";
+
+  logger.info(`[${rid}] createCoach: start`, { email });
 
   let user = await User.findOne({ email });
 
   if (user) {
     const existingCoach = await Coach.findOne({ userId: user._id });
     if (existingCoach) {
+      logger.warn(`[${rid}] createCoach: user is already a coach`, { email });
       throw new AppError("Cet utilisateur est déjà coach", 409);
     }
+    logger.info(`[${rid}] createCoach: existing user promoted to coach`, { email });
   } else {
     user = await User.create({ email, firstName, lastName });
+    logger.info(`[${rid}] createCoach: new user created`, { email });
   }
 
   const coach = await Coach.create({ userId: user._id });
+  logger.info(`[${rid}] createCoach: coach profile created`, {
+    coachId: coach._id,
+    userId: user._id,
+    email,
+  });
 
   res.status(201).json({
     status: "success",

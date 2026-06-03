@@ -1,39 +1,45 @@
-﻿import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import User from "../models/User";
 import Coach from "../models/Coach";
 import Client from "../models/Client";
 import { AppError } from "../utils/AppError";
 import { catchAsync } from "../utils/catchAsync";
+import logger from "../utils/logger";
 
-// VÃ©rifie si l'utilisateur est Admin
+// Vérifie si l'utilisateur est Admin
 export const requireAdmin = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const userId = req.session.userId;
+    const rid = (req as any).requestId ?? "?";
 
     const user = await User.findById(userId);
 
     if (!user || !user.isAdmin) {
-      throw new AppError("AccÃ¨s refusÃ© : Administrateur requis", 403);
+      logger.warn(`[${rid}] requireAdmin: denied`, {
+        userId,
+        isAdmin: user?.isAdmin ?? false,
+      });
+      throw new AppError("Accès refusé : Administrateur requis", 403);
     }
 
     next();
   },
 );
 
-// VÃ©rifie si l'utilisateur est Coach
+// Vérifie si l'utilisateur est Coach
 export const requireCoach = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const userId = req.session.userId;
+    const rid = (req as any).requestId ?? "?";
 
-    // On cherche si un profil Coach est associÃ© Ã  cet User
     const coach = await Coach.findOne({ userId });
 
     if (!coach) {
-      throw new AppError("AccÃ¨s refusÃ© : Espace Coach uniquement", 403);
+      logger.warn(`[${rid}] requireCoach: no coach profile found`, { userId });
+      throw new AppError("Accès refusé : Espace Coach uniquement", 403);
     }
 
     res.locals.coach = coach;
-
     next();
   },
 );
@@ -42,15 +48,16 @@ export const requireCoach = catchAsync(
 export const requireClient = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const userId = req.session.userId;
+    const rid = (req as any).requestId ?? "?";
 
     const client = await Client.findOne({ userId });
 
     if (!client) {
+      logger.warn(`[${rid}] requireClient: no client profile found`, { userId });
       throw new AppError("Accès refusé : Espace Client uniquement", 403);
     }
 
     res.locals.client = client;
-
     next();
   },
 );

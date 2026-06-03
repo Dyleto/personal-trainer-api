@@ -13,6 +13,7 @@ import mongoose, { isValidObjectId, Types } from "mongoose";
 import CompletedSession from "../models/CompletedSession";
 import { getAuthorizedClient } from "../services/coachService";
 import { getOrCreate } from "../services/programService";
+import logger from "../utils/logger";
 
 type PopulatedBlockExercise = {
   exerciseId: IExercise;
@@ -313,6 +314,13 @@ export const updateProgramSessions = catchAsync(
     const coach = res.locals.coach as ICoach;
     const clientId = req.params.clientId as string;
     const { sessions } = req.body;
+    const rid = (req as any).requestId ?? "?";
+
+    logger.info(`[${rid}] updateProgramSessions: start`, {
+      coachId: coach._id,
+      clientId,
+      sessionCount: Array.isArray(sessions) ? sessions.length : "?",
+    });
 
     const client = await getAuthorizedClient(coach._id, clientId);
     const program = await getOrCreate(client._id);
@@ -347,6 +355,10 @@ export const updateProgramSessions = catchAsync(
         );
 
         if (idsToDelete.length > 0) {
+          logger.info(`[${rid}] updateProgramSessions: deleting removed sessions`, {
+            count: idsToDelete.length,
+            ids: idsToDelete,
+          });
           await Session.deleteMany(
             { _id: { $in: idsToDelete }, programId: program._id },
             { session: dbSession },
@@ -385,11 +397,23 @@ export const updateProgramSessions = catchAsync(
           .lean()
           .session(dbSession);
       });
+    } catch (err: any) {
+      logger.error(`[${rid}] updateProgramSessions: transaction failed`, {
+        coachId: coach._id,
+        clientId,
+        error: err.message,
+      });
+      throw err;
     } finally {
       dbSession.endSession();
     }
 
     const formatted = (updatedSessions as unknown as PopulatedSession[]).map(formatSession);
+    logger.info(`[${rid}] updateProgramSessions: success`, {
+      coachId: coach._id,
+      clientId,
+      savedCount: formatted.length,
+    });
     res.status(200).json(formatted);
   },
 );
