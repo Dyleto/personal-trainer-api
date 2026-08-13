@@ -1,53 +1,19 @@
-import { Request, Response } from "express";
-import { catchAsync } from "../utils/catchAsync";
-import { AppError } from "../utils/AppError";
-import { ICoach } from "../models/Coach";
-import InvitationToken from "../models/InvitationToken";
-import Client from "../models/Client";
-import Exercise from "../models/Exercise";
-import { IExercise } from "../models/Exercise";
-import { IUser } from "../models/User";
-import Session from "../models/Session";
-import { ISessionBlock } from "../models/Session";
-import mongoose, { isValidObjectId, Types } from "mongoose";
-import CompletedSession from "../models/CompletedSession";
-import { getAuthorizedClient } from "../services/coachService";
-import { getOrCreate } from "../services/programService";
-import logger from "../utils/logger";
-
-type PopulatedBlockExercise = {
-  exerciseId: IExercise;
-  order: number;
-  sets?: number;
-  restBetweenSets?: number;
-  reps?: number;
-  duration?: number;
-  customMetric?: { value: number; unit: string };
-};
-
-type PopulatedBlock = Omit<ISessionBlock, "exercises"> & {
-  exercises: PopulatedBlockExercise[];
-};
-
-type PopulatedSession = {
-  _id: unknown;
-  order: number;
-  notes?: string;
-  blocks: PopulatedBlock[];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-const formatSession = (session: PopulatedSession) => ({
-  ...session,
-  blocks: session.blocks.map((block) => ({
-    ...block,
-    exercises: block.exercises.map(({ exerciseId, ...rest }) => ({
-      ...rest,
-      exercise: exerciseId,
-    })),
-  })),
-});
+import { Request, Response } from 'express';
+import { catchAsync } from '../utils/catchAsync';
+import { AppError } from '../utils/AppError';
+import { ICoach } from '../models/Coach';
+import InvitationToken from '../models/InvitationToken';
+import Client from '../models/Client';
+import Exercise from '../models/Exercise';
+import { IUser } from '../models/User';
+import Session from '../models/Session';
+import mongoose, { isValidObjectId, Types } from 'mongoose';
+import CompletedSession from '../models/CompletedSession';
+import { getAuthorizedClient } from '../services/coachService';
+import { getOrCreate } from '../services/programService';
+import logger from '../utils/logger';
+import { PopulatedSession, formatSession } from '../utils/sessionFormatter';
+import { getErrorMessage } from '../utils/errors';
 
 // --------------------------------------------------------------------------
 // INVITATIONS
@@ -79,14 +45,14 @@ export const generateInvitation = catchAsync(
     }
 
     res.status(200).json({
-      status: "success",
+      status: 'success',
       message: "Lien d'invitation généré avec succès",
       token: invitationToken.token,
       expiresAt: invitationToken.expiresAt,
       // (Bonus) l'URL directe c'est pratique :
       // inviteUrl: `${process.env.FRONTEND_URL}/join?token=${invitationToken.token}`
     });
-  },
+  }
 );
 
 // --------------------------------------------------------------------------
@@ -97,40 +63,40 @@ export const getClients = catchAsync(async (req: Request, res: Response) => {
   const coach = res.locals.coach as ICoach;
 
   const clients = await Client.aggregate([
-    { $match: { "coaches.coachId": coach._id } },
+    { $match: { 'coaches.coachId': coach._id } },
     {
       $lookup: {
-        from: "users",
-        localField: "userId",
-        foreignField: "_id",
-        as: "userDoc",
+        from: 'users',
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'userDoc',
       },
     },
-    { $unwind: "$userDoc" },
+    { $unwind: '$userDoc' },
     {
       $lookup: {
-        from: "completedsessions",
-        let: { clientId: "$_id" },
+        from: 'completedsessions',
+        let: { clientId: '$_id' },
         pipeline: [
           {
             $match: {
-              $expr: { $eq: ["$clientId", "$$clientId"] },
+              $expr: { $eq: ['$clientId', '$$clientId'] },
               viewedByCoach: { $ne: true },
             },
           },
-          { $count: "total" },
+          { $count: 'total' },
         ],
-        as: "unseenData",
+        as: 'unseenData',
       },
     },
     {
       $project: {
         _id: 1,
-        firstName: "$userDoc.firstName",
-        lastName: "$userDoc.lastName",
-        picture: "$userDoc.picture",
+        firstName: '$userDoc.firstName',
+        lastName: '$userDoc.lastName',
+        picture: '$userDoc.picture',
         unseenCount: {
-          $ifNull: [{ $arrayElemAt: ["$unseenData.total", 0] }, 0],
+          $ifNull: [{ $arrayElemAt: ['$unseenData.total', 0] }, 0],
         },
       },
     },
@@ -145,16 +111,18 @@ export const getClientDetails = catchAsync(
     const clientId = req.params.id as string;
 
     const rawClient = await getAuthorizedClient(coach._id, clientId);
-    const client = await rawClient.populate<{ userId: IUser }>("userId");
+    const client = await rawClient.populate<{ userId: IUser }>('userId');
 
     const program = await getOrCreate(client._id);
 
     const rawSessions = await Session.find({ programId: program._id })
       .sort({ order: 1 })
-      .populate("blocks.exercises.exerciseId")
+      .populate('blocks.exercises.exerciseId')
       .lean();
 
-    const sessions = (rawSessions as unknown as PopulatedSession[]).map(formatSession);
+    const sessions = (rawSessions as unknown as PopulatedSession[]).map(
+      formatSession
+    );
 
     const unseenCount = await CompletedSession.countDocuments({
       clientId: client._id,
@@ -173,7 +141,7 @@ export const getClientDetails = catchAsync(
       },
       unseenCount,
     });
-  },
+  }
 );
 
 export const getClientHistory = catchAsync(
@@ -192,7 +160,7 @@ export const getClientHistory = catchAsync(
       .limit(limit);
 
     res.status(200).json(history);
-  },
+  }
 );
 
 export const markHistoryAsViewed = catchAsync(
@@ -200,15 +168,15 @@ export const markHistoryAsViewed = catchAsync(
     const coach = res.locals.coach as ICoach;
     const clientId = req.params.id as string;
 
-    const client = await getAuthorizedClient(coach._id, clientId);
+    await getAuthorizedClient(coach._id, clientId);
 
     await CompletedSession.updateMany(
       { clientId, viewedByCoach: { $ne: true } },
-      { $set: { viewedByCoach: true } },
+      { $set: { viewedByCoach: true } }
     );
 
-    res.status(200).json({ status: "success" });
-  },
+    res.status(200).json({ status: 'success' });
+  }
 );
 
 // --------------------------------------------------------------------------
@@ -222,13 +190,15 @@ export const getExercisesStats = catchAsync(
     const count = await Exercise.countDocuments({ createdBy: coach._id });
 
     res.status(200).json({ count });
-  },
+  }
 );
 
 export const getExercises = catchAsync(async (req: Request, res: Response) => {
   const coach = res.locals.coach as ICoach;
 
-  const exercises = await Exercise.find({ createdBy: coach._id }).sort({ name: 1 });
+  const exercises = await Exercise.find({ createdBy: coach._id }).sort({
+    name: 1,
+  });
 
   res.status(200).json(exercises);
 });
@@ -239,10 +209,10 @@ export const getExerciseDetails = catchAsync(
     const { id } = req.params;
 
     const exercise = await Exercise.findOne({ _id: id, createdBy: coach._id });
-    if (!exercise) throw new AppError("Exercice non trouvé", 404);
+    if (!exercise) throw new AppError('Exercice non trouvé', 404);
 
     res.status(200).json(exercise);
-  },
+  }
 );
 
 export const createExercise = catchAsync(
@@ -252,13 +222,13 @@ export const createExercise = catchAsync(
 
     const exercise = await Exercise.create({
       name,
-      description: description || "",
-      videoUrl: videoUrl || "",
+      description: description || '',
+      videoUrl: videoUrl || '',
       createdBy: coach._id,
     });
 
     res.status(201).json(exercise);
-  },
+  }
 );
 
 export const updateExercise = catchAsync(
@@ -268,7 +238,7 @@ export const updateExercise = catchAsync(
     const { name, description, videoUrl } = req.body;
 
     const exercise = await Exercise.findOne({ _id: id, createdBy: coach._id });
-    if (!exercise) throw new AppError("Exercice non trouvé", 404);
+    if (!exercise) throw new AppError('Exercice non trouvé', 404);
 
     if (name) exercise.name = name;
     if (description !== undefined) exercise.description = description;
@@ -277,7 +247,7 @@ export const updateExercise = catchAsync(
     await exercise.save();
 
     res.status(200).json(exercise);
-  },
+  }
 );
 
 export const deleteExercise = catchAsync(
@@ -286,23 +256,23 @@ export const deleteExercise = catchAsync(
     const { id } = req.params;
 
     const usedInSession = await Session.findOne({
-      "blocks.exercises.exerciseId": id,
+      'blocks.exercises.exerciseId': id,
     });
 
     if (usedInSession) {
       throw new AppError(
-        "Cet exercice est utilisé dans une séance, impossible de le supprimer",
-        400,
+        'Cet exercice est utilisé dans une séance, impossible de le supprimer',
+        400
       );
     }
 
     const result = await Exercise.deleteOne({ _id: id, createdBy: coach._id });
 
     if (result.deletedCount === 0)
-      throw new AppError("Exercice non trouvé", 404);
+      throw new AppError('Exercice non trouvé', 404);
 
     res.status(204).send(); // 204 No Content
-  },
+  }
 );
 
 // --------------------------------------------------------------------------
@@ -314,12 +284,12 @@ export const updateProgramSessions = catchAsync(
     const coach = res.locals.coach as ICoach;
     const clientId = req.params.clientId as string;
     const { sessions } = req.body;
-    const rid = (req as any).requestId ?? "?";
+    const rid = req.requestId ?? '?';
 
     logger.info(`[${rid}] updateProgramSessions: start`, {
       coachId: coach._id,
       clientId,
-      sessionCount: Array.isArray(sessions) ? sessions.length : "?",
+      sessionCount: Array.isArray(sessions) ? sessions.length : '?',
     });
 
     const client = await getAuthorizedClient(coach._id, clientId);
@@ -339,11 +309,11 @@ export const updateProgramSessions = catchAsync(
         const existingSessionIds = await Session.find({
           programId: program._id,
         })
-          .select("_id")
+          .select('_id')
           .session(dbSession);
 
         const existingIds = existingSessionIds.map((s) =>
-          (s._id as Types.ObjectId).toString(),
+          (s._id as Types.ObjectId).toString()
         );
 
         const incomingIds = (sessions as SessionInput[])
@@ -351,19 +321,26 @@ export const updateProgramSessions = catchAsync(
           .map((s) => s._id as string);
 
         const idsToDelete = existingIds.filter(
-          (id) => !incomingIds.includes(id),
+          (id) => !incomingIds.includes(id)
         );
 
         if (idsToDelete.length > 0) {
-          logger.info(`[${rid}] updateProgramSessions: deleting removed sessions`, {
-            count: idsToDelete.length,
-            ids: idsToDelete,
-          });
-          await Session.deleteMany(
-            { _id: { $in: idsToDelete }, programId: program._id },
-            { session: dbSession },
+          logger.info(
+            `[${rid}] updateProgramSessions: deleting removed sessions`,
+            {
+              count: idsToDelete.length,
+              ids: idsToDelete,
+            }
           );
         }
+
+        const deletePromise =
+          idsToDelete.length > 0
+            ? Session.deleteMany(
+                { _id: { $in: idsToDelete }, programId: program._id },
+                { session: dbSession }
+              )
+            : Promise.resolve();
 
         const operations = (sessions as SessionInput[]).map(
           (sessionData, index) => {
@@ -386,34 +363,39 @@ export const updateProgramSessions = catchAsync(
             } else {
               return Session.create([payload], { session: dbSession });
             }
-          },
+          }
         );
 
-        await Promise.all(operations);
+        await Promise.all([deletePromise, ...operations]);
 
         updatedSessions = await Session.find({ programId: program._id })
           .sort({ order: 1 })
-          .populate("blocks.exercises.exerciseId")
+          .populate('blocks.exercises.exerciseId')
           .lean()
           .session(dbSession);
       });
-    } catch (err: any) {
-      logger.error(`[${rid}] updateProgramSessions: transaction failed`, {
-        coachId: coach._id,
-        clientId,
-        error: err.message,
-      });
-      throw err;
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(`[${rid}] updateProgramSessions: transaction failed`, {
+          coachId: coach._id,
+          clientId,
+          error: getErrorMessage(error),
+        });
+      }
+
+      throw error;
     } finally {
       dbSession.endSession();
     }
 
-    const formatted = (updatedSessions as unknown as PopulatedSession[]).map(formatSession);
+    const formatted = (updatedSessions as unknown as PopulatedSession[]).map(
+      formatSession
+    );
     logger.info(`[${rid}] updateProgramSessions: success`, {
       coachId: coach._id,
       clientId,
       savedCount: formatted.length,
     });
     res.status(200).json(formatted);
-  },
+  }
 );

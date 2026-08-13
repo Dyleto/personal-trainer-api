@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+﻿import { z } from 'zod';
 
 const metricsSchema = z.object({
   stress: z.number().int().min(1).max(5),
@@ -15,5 +15,11 @@ export const completeSessionSchema = z.object({
   body: z.object({
     metrics: metricsSchema,
     clientNotes: z.string().optional(),
+    completedAt: z.coerce
+      .date()
+      .refine((date) => date <= new Date(), {
+        message: 'La date de complétion ne peut pas être dans le futur',
+      })
+      .optional(),
   }),
 });

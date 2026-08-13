@@ -1,59 +1,23 @@
-import { Request, Response } from "express";
-import { catchAsync } from "../utils/catchAsync";
-import { AppError } from "../utils/AppError";
-import { IClient } from "../models/Client";
-import { IExercise } from "../models/Exercise";
-import { ISessionBlock } from "../models/Session";
-import Program from "../models/Program";
-import Session from "../models/Session";
-import CompletedSession from "../models/CompletedSession";
-import { getOrCreate } from "../services/programService";
-import logger from "../utils/logger";
-
-type PopulatedBlockExercise = {
-  exerciseId: IExercise;
-  order: number;
-  sets?: number;
-  restBetweenSets?: number;
-  reps?: number;
-  duration?: number;
-  customMetric?: { value: number; unit: string };
-};
-
-type PopulatedBlock = Omit<ISessionBlock, "exercises"> & {
-  exercises: PopulatedBlockExercise[];
-};
-
-type PopulatedSession = {
-  _id: unknown;
-  order: number;
-  notes?: string;
-  blocks: PopulatedBlock[];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-const formatSession = (session: PopulatedSession) => ({
-  ...session,
-  blocks: session.blocks.map((block) => ({
-    ...block,
-    exercises: block.exercises.map(({ exerciseId, ...rest }) => ({
-      ...rest,
-      exercise: exerciseId,
-    })),
-  })),
-});
+import { Request, Response } from 'express';
+import { catchAsync } from '../utils/catchAsync';
+import { AppError } from '../utils/AppError';
+import { IClient } from '../models/Client';
+import Program from '../models/Program';
+import Session from '../models/Session';
+import CompletedSession from '../models/CompletedSession';
+import { getOrCreate } from '../services/programService';
+import logger from '../utils/logger';
+import { formatSession, PopulatedSession } from '../utils/sessionFormatter';
 
 // GET /api/client/program
 export const getProgram = catchAsync(async (req: Request, res: Response) => {
   const client = res.locals.client as IClient;
-  const rid = (req as any).requestId ?? "?";
 
   const program = await getOrCreate(client._id);
 
   const sessions = await Session.find({ programId: program._id })
     .sort({ order: 1 })
-    .populate("blocks.exercises.exerciseId")
+    .populate('blocks.exercises.exerciseId')
     .lean();
 
   res.status(200).json({
@@ -70,7 +34,7 @@ export const completeSession = catchAsync(
     const client = res.locals.client as IClient;
     const { sessionId } = req.params;
     const { metrics, clientNotes, completedAt } = req.body;
-    const rid = (req as any).requestId ?? "?";
+    const rid = req.requestId ?? '?';
 
     logger.info(`[${rid}] completeSession: start`, {
       clientId: client._id,
@@ -79,15 +43,17 @@ export const completeSession = catchAsync(
 
     const program = await Program.findOne({ clientId: client._id });
     if (!program) {
-      logger.warn(`[${rid}] completeSession: program not found`, { clientId: client._id });
-      throw new AppError("Programme introuvable", 404);
+      logger.warn(`[${rid}] completeSession: program not found`, {
+        clientId: client._id,
+      });
+      throw new AppError('Programme introuvable', 404);
     }
 
     const session = await Session.findOne({
       _id: sessionId,
       programId: program._id,
     })
-      .populate("blocks.exercises.exerciseId")
+      .populate('blocks.exercises.exerciseId')
       .lean();
 
     if (!session) {
@@ -96,7 +62,7 @@ export const completeSession = catchAsync(
         sessionId,
         programId: program._id,
       });
-      throw new AppError("Séance introuvable", 404);
+      throw new AppError('Séance introuvable', 404);
     }
 
     const formatted = formatSession(session as unknown as PopulatedSession);
@@ -119,7 +85,7 @@ export const completeSession = catchAsync(
       completedId: completed._id,
     });
     res.status(201).json({ completed });
-  },
+  }
 );
 
 // GET /api/client/history

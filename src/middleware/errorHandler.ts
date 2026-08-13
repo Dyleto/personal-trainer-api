@@ -1,18 +1,17 @@
-import { Request, Response, NextFunction } from "express";
-import { AppError } from "../utils/AppError";
-import logger from "../utils/logger";
+import { Request, Response } from 'express';
+import { AppError } from '../utils/AppError';
+import logger from '../utils/logger';
 
 export const globalErrorHandler = (
   err: AppError | Error,
   req: Request,
-  res: Response,
-  next: NextFunction,
+  res: Response
 ) => {
   let statusCode = (err as AppError).statusCode || 500;
   let message = err.message;
 
-  const requestId = (req as any).requestId ?? "?";
-  const userId = req.session?.userId ?? "anonymous";
+  const requestId = req.requestId ?? '?';
+  const userId = req.session?.userId ?? 'anonymous';
 
   const context = {
     requestId,
@@ -37,28 +36,28 @@ export const globalErrorHandler = (
   }
 
   // Erreurs Mongoose/JWT normalisées
-  if (err.name === "CastError") {
-    message = "Ressource introuvable (ID invalide)";
+  if (err.name === 'CastError') {
+    message = 'Ressource introuvable (ID invalide)';
     statusCode = 400;
   }
-  if (err.name === "ValidationError") {
-    message = "Données invalides";
+  if (err.name === 'ValidationError') {
+    message = 'Données invalides';
     statusCode = 400;
   }
-  if (err.name === "JsonWebTokenError") {
-    message = "Token invalide, veuillez vous reconnecter";
+  if (err.name === 'JsonWebTokenError') {
+    message = 'Token invalide, veuillez vous reconnecter';
     statusCode = 401;
   }
 
   // En prod, on masque les détails des erreurs 500
-  if (process.env.NODE_ENV === "production" && statusCode === 500) {
-    message = "Une erreur interne est survenue";
+  if (process.env.NODE_ENV === 'production' && statusCode === 500) {
+    message = 'Une erreur interne est survenue';
   }
 
   res.status(statusCode).json({
-    status: statusCode >= 500 ? "error" : "fail",
+    status: statusCode >= 500 ? 'error' : 'fail',
     message,
     requestId, // Permet au frontend de reporter l'ID pour debug
-    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
   });
 };

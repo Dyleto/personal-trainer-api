@@ -1,11 +1,12 @@
-﻿import { ICoach } from "../models/Coach";
-import { IClient } from "../models/Client";
-import { IUser } from "../models/User";
+﻿import { ICoach } from '../models/Coach';
+import { IClient } from '../models/Client';
+import { IUser } from '../models/User';
 
 declare global {
   namespace Express {
     interface Request {
       user?: IUser;
+      requestId?: string;
     }
     interface Locals {
       coach?: ICoach;

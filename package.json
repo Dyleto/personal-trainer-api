@@ -6,9 +6,14 @@
     "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write src",
     "seed:exercises": "ts-node src/scripts/seedExercises.ts"
   },
   "dependencies": {
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.1.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -26,13 +31,21 @@
     "google-auth-library": "^10.5.0",
     "helmet": "^8.1.0",
     "mongoose": "^8.3.2",
+    "react": "^19.2.8",
+    "resend": "^6.19.0",
     "typescript": "^5.9.3",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.18",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
     "nodemon": "^3.1.0",
+    "prettier": "^3.8.4",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0"
+    "tsconfig-paths": "^4.2.0",
+    "typescript-eslint": "^8.61.1"
   }
 }

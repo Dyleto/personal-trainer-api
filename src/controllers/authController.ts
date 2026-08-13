@@ -1,26 +1,28 @@
-import { Request, Response } from "express";
-import { Types } from "mongoose";
-import User from "../models/User";
-import Coach from "../models/Coach";
-import { IUser } from "../models/User";
-import { catchAsync } from "../utils/catchAsync";
-import { AppError } from "../utils/AppError";
-import { buildUser } from "../services/userService";
+import { Request, Response } from 'express';
+import { Types } from 'mongoose';
+import User from '../models/User';
+import Coach from '../models/Coach';
+import { IUser } from '../models/User';
+import { catchAsync } from '../utils/catchAsync';
+import { AppError } from '../utils/AppError';
+import { buildUser } from '../services/userService';
 import {
   exchangeGoogleCode,
   verifyGoogleCredential,
   findOrCreateUser,
   linkClientToCoach,
   validateInvitationToken,
-} from "../services/authService";
-import logger from "../utils/logger";
+} from '../services/authService';
+import logger from '../utils/logger';
+import { TokenPayload } from 'google-auth-library';
+import { getErrorMessage } from '../utils/errors';
 
 // ─── Google OAuth (code flow) ─────────────────────────────────────────────────
 
 export const googleAuthCallback = catchAsync(
   async (req: Request, res: Response) => {
     const { code, redirectUri, invitationToken } = req.body;
-    const rid = (req as any).requestId ?? "?";
+    const rid = req.requestId ?? '?';
 
     logger.info(`[${rid}] googleAuthCallback: start`, {
       hasCode: !!code,
@@ -28,15 +30,19 @@ export const googleAuthCallback = catchAsync(
       hasInvitationToken: !!invitationToken,
     });
 
-    let payload;
+    let payload: TokenPayload;
+
     try {
       payload = await exchangeGoogleCode(code, redirectUri);
-    } catch (err: any) {
-      logger.error(`[${rid}] googleAuthCallback: exchangeGoogleCode failed`, {
-        error: err.message,
-        redirectUri,
-      });
-      throw err;
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(`[${rid}] googleAuthCallback: exchangeGoogleCode failed`, {
+          error: getErrorMessage(error),
+          redirectUri,
+        });
+      }
+
+      throw error;
     }
 
     logger.info(`[${rid}] googleAuthCallback: google token exchanged`, {
@@ -52,18 +58,24 @@ export const googleAuthCallback = catchAsync(
         const user = await findOrCreateUser(payload);
         await linkClientToCoach(
           user._id as Types.ObjectId,
-          invToken.coachId as Types.ObjectId,
+          invToken.coachId as Types.ObjectId
         );
         logger.info(`[${rid}] googleAuthCallback: client linked to coach`, {
           email: payload.email,
           coachId: invToken.coachId,
         });
-      } catch (err: any) {
-        logger.error(`[${rid}] googleAuthCallback: invitation processing failed`, {
-          error: err.message,
-          email: payload.email,
-        });
-        throw err;
+      } catch (error) {
+        if (error instanceof Error) {
+          logger.error(
+            `[${rid}] googleAuthCallback: invitation processing failed`,
+            {
+              error: getErrorMessage(error),
+              email: payload.email,
+            }
+          );
+        }
+
+        throw error;
       }
     }
 
@@ -72,7 +84,7 @@ export const googleAuthCallback = catchAsync(
       logger.warn(`[${rid}] googleAuthCallback: user not found after login`, {
         email: payload.email,
       });
-      throw new AppError("Utilisateur inconnu. Contactez votre coach.", 401);
+      throw new AppError('Utilisateur inconnu. Contactez votre coach.', 401);
     }
 
     if (payload.picture && payload.picture !== user.picture) {
@@ -85,12 +97,15 @@ export const googleAuthCallback = catchAsync(
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => (err ? reject(err) : resolve()));
       });
-    } catch (err: any) {
-      logger.error(`[${rid}] googleAuthCallback: session save failed`, {
-        userId: req.session.userId,
-        error: err.message,
-      });
-      throw new AppError("Erreur de session, veuillez réessayer", 500);
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(`[${rid}] googleAuthCallback: session save failed`, {
+          userId: req.session.userId,
+          error: getErrorMessage(error),
+        });
+      }
+
+      throw new AppError('Erreur de session, veuillez réessayer', 500);
     }
 
     const builtUser = await buildUser(user);
@@ -98,8 +113,8 @@ export const googleAuthCallback = catchAsync(
       userId: user._id,
       email: user.email,
     });
-    res.status(200).json({ status: "success", user: builtUser });
-  },
+    res.status(200).json({ status: 'success', user: builtUser });
+  }
 );
 
 // ─── Google One Tap ───────────────────────────────────────────────────────────
@@ -107,18 +122,24 @@ export const googleAuthCallback = catchAsync(
 export const googleOneTapCallback = catchAsync(
   async (req: Request, res: Response) => {
     const { credential } = req.body;
-    const rid = (req as any).requestId ?? "?";
+    const rid = req.requestId ?? '?';
 
     logger.info(`[${rid}] googleOneTapCallback: start`);
 
     let payload;
     try {
       payload = await verifyGoogleCredential(credential);
-    } catch (err: any) {
-      logger.error(`[${rid}] googleOneTapCallback: credential verification failed`, {
-        error: err.message,
-      });
-      throw err;
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(
+          `[${rid}] googleOneTapCallback: credential verification failed`,
+          {
+            error: getErrorMessage(error),
+          }
+        );
+      }
+
+      throw error;
     }
 
     logger.info(`[${rid}] googleOneTapCallback: credential verified`, {
@@ -130,7 +151,7 @@ export const googleOneTapCallback = catchAsync(
       logger.warn(`[${rid}] googleOneTapCallback: user not found`, {
         email: payload.email,
       });
-      throw new AppError("Utilisateur inconnu. Contactez votre coach.", 401);
+      throw new AppError('Utilisateur inconnu. Contactez votre coach.', 401);
     }
 
     if (payload.picture && payload.picture !== user.picture) {
@@ -143,12 +164,15 @@ export const googleOneTapCallback = catchAsync(
       await new Promise<void>((resolve, reject) => {
         req.session.save((err) => (err ? reject(err) : resolve()));
       });
-    } catch (err: any) {
-      logger.error(`[${rid}] googleOneTapCallback: session save failed`, {
-        userId: req.session.userId,
-        error: err.message,
-      });
-      throw new AppError("Erreur de session, veuillez réessayer", 500);
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error(`[${rid}] googleOneTapCallback: session save failed`, {
+          userId: req.session.userId,
+          error: getErrorMessage(error),
+        });
+      }
+
+      throw new AppError('Erreur de session, veuillez réessayer', 500);
     }
 
     const builtUser = await buildUser(user);
@@ -156,19 +180,19 @@ export const googleOneTapCallback = catchAsync(
       userId: user._id,
       email: user.email,
     });
-    res.status(200).json({ status: "success", user: builtUser });
-  },
+    res.status(200).json({ status: 'success', user: builtUser });
+  }
 );
 
 // ─── /me ─────────────────────────────────────────────────────────────────────
 
 export const getMe = catchAsync(async (req: Request, res: Response) => {
   const userId = req.session.userId;
-  const rid = (req as any).requestId ?? "?";
+  const rid = req.requestId ?? '?';
 
   if (!userId) {
     logger.debug(`[${rid}] getMe: no session userId`);
-    throw new AppError("Non authentifié", 401);
+    throw new AppError('Non authentifié', 401);
   }
 
   const user = await User.findById(userId);
@@ -176,11 +200,11 @@ export const getMe = catchAsync(async (req: Request, res: Response) => {
     logger.warn(`[${rid}] getMe: userId in session but user not in DB`, {
       userId,
     });
-    throw new AppError("Utilisateur introuvable", 404);
+    throw new AppError('Utilisateur introuvable', 404);
   }
 
   const builtUser = await buildUser(user);
-  res.status(200).json({ status: "success", user: builtUser });
+  res.status(200).json({ status: 'success', user: builtUser });
 });
 
 // ─── Invitation ───────────────────────────────────────────────────────────────
@@ -188,27 +212,31 @@ export const getMe = catchAsync(async (req: Request, res: Response) => {
 export const verifyInviteToken = catchAsync(
   async (req: Request, res: Response) => {
     const token = req.query.token as string;
-    const rid = (req as any).requestId ?? "?";
+    const rid = req.requestId ?? '?';
 
-    if (!token) throw new AppError("Token manquant", 400);
+    if (!token) throw new AppError('Token manquant', 400);
 
     let invitationToken;
     try {
       invitationToken = await validateInvitationToken(token);
-    } catch (err: any) {
-      logger.warn(`[${rid}] verifyInviteToken: invalid/expired token`);
-      throw err;
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.warn(`[${rid}] verifyInviteToken: invalid/expired token`, {
+          error: getErrorMessage(error),
+        });
+      }
+      throw error;
     }
 
     const coach = await Coach.findById(invitationToken.coachId).populate<{
       userId: IUser;
-    }>("userId", "firstName lastName picture");
+    }>('userId', 'firstName lastName picture');
 
     if (!coach || !coach.userId) {
       logger.error(`[${rid}] verifyInviteToken: coach not found`, {
         coachId: invitationToken.coachId,
       });
-      throw new AppError("Coach introuvable", 500);
+      throw new AppError('Coach introuvable', 500);
     }
 
     res.status(200).json({
@@ -220,20 +248,20 @@ export const verifyInviteToken = catchAsync(
         picture: coach.userId.picture,
       },
     });
-  },
+  }
 );
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 
 export const logout = catchAsync(async (req: Request, res: Response) => {
   const userId = req.session.userId;
-  const rid = (req as any).requestId ?? "?";
+  const rid = req.requestId ?? '?';
 
   await new Promise<void>((resolve, reject) => {
     req.session.destroy((err) => (err ? reject(err) : resolve()));
   });
 
-  res.clearCookie("connect.sid");
+  res.clearCookie('connect.sid');
   logger.info(`[${rid}] logout: success`, { userId });
-  res.status(200).json({ message: "Déconnexion réussie" });
+  res.status(200).json({ message: 'Déconnexion réussie' });
 });

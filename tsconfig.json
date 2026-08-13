@@ -7,8 +7,10 @@
     "esModuleInterop": true,
     "strict": true,
     "moduleResolution": "node",
+    "ignoreDeprecations": "5.0",
     "skipLibCheck": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"]
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
   "exclude": ["dist"]
