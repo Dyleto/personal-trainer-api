@@ -265,3 +265,29 @@ export const logout = catchAsync(async (req: Request, res: Response) => {
   logger.info(`[${rid}] logout: success`, { userId });
   res.status(200).json({ message: 'Déconnexion réussie' });
 });
+
+// ─── Connexion de développement (jamais en production) ──────────────────────
+
+export const devLogin = catchAsync(async (req: Request, res: Response) => {
+  const userId = req.body.userId || process.env.DEV_LOGIN_USER_ID;
+  const rid = req.requestId ?? '?';
+
+  if (!userId) {
+    throw new AppError('userId requis (body ou DEV_LOGIN_USER_ID)', 400);
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    logger.warn(`[${rid}] devLogin: user not found`, { userId });
+    throw new AppError('Utilisateur introuvable', 404);
+  }
+
+  req.session.userId = (user._id as string).toString();
+  await new Promise<void>((resolve, reject) => {
+    req.session.save((err) => (err ? reject(err) : resolve()));
+  });
+
+  const builtUser = await buildUser(user);
+  logger.info(`[${rid}] devLogin: success`, { userId: user._id });
+  res.status(200).json({ status: 'success', user: builtUser });
+});

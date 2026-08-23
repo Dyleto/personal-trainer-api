@@ -1,32 +1,37 @@
-import { Router } from "express";
-import { validate } from "../middleware/validate";
-import { googleAuthSchema } from "../schemas/authSchema";
-import rateLimit from "express-rate-limit";
+import { Router } from 'express';
+import { validate } from '../middleware/validate';
+import { googleAuthSchema } from '../schemas/authSchema';
+import rateLimit from 'express-rate-limit';
 import {
   googleAuthCallback,
   googleOneTapCallback,
   getMe,
   logout,
   verifyInviteToken,
-} from "../controllers/authController";
+  devLogin,
+} from '../controllers/authController';
 
 const router = Router();
 
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
-  message: "Trop de tentatives de connexion.",
+  message: 'Trop de tentatives de connexion.',
 });
 
 router.post(
-  "/google-callback",
+  '/google-callback',
   authLimiter,
   validate(googleAuthSchema),
-  googleAuthCallback,
+  googleAuthCallback
 );
-router.post("/google-onetap", authLimiter, googleOneTapCallback);
-router.get("/me", getMe);
-router.post("/logout", logout);
-router.get("/verify-invite-token", verifyInviteToken);
+router.post('/google-onetap', authLimiter, googleOneTapCallback);
+router.get('/me', getMe);
+router.post('/logout', logout);
+router.get('/verify-invite-token', verifyInviteToken);
+
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/dev-login', devLogin);
+}
 
 export default router;
