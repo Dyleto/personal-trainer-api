@@ -195,16 +195,6 @@ export const markHistoryAsViewed = catchAsync(
 // EXERCISES
 // --------------------------------------------------------------------------
 
-export const getExercisesStats = catchAsync(
-  async (req: Request, res: Response) => {
-    const coach = res.locals.coach as ICoach;
-
-    const count = await Exercise.countDocuments({ createdBy: coach._id });
-
-    res.status(200).json({ count });
-  }
-);
-
 // Nombre de séances du coach dans lesquelles chaque exercice apparaît.
 // La chaîne part de Client (index coaches.coachId) puis suit programs.clientId
 // et sessions.programId, tous deux indexés.
