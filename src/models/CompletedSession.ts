@@ -1,4 +1,14 @@
-import { model, Schema, Types, Document } from "mongoose";
+import { model, Schema, Types, Document } from 'mongoose';
+import { FEEDBACK_TAGS, FeedbackTag } from '../constants/feedback';
+
+// Ce que le client a réellement fait, à côté de la prescription.
+// Une clé absente = non renseignée. On n'écrit jamais 0 pour dire "rien".
+export interface IPerformed {
+  weight?: number;
+  reps?: number;
+  sets?: number;
+  duration?: number;
+}
 
 export interface IBlockExerciseSnapshot {
   exercise: Record<string, unknown>;
@@ -8,6 +18,7 @@ export interface IBlockExerciseSnapshot {
   reps?: number;
   duration?: number;
   customMetric?: { value: number; unit: string };
+  performed?: IPerformed;
 }
 
 export interface IBlockSnapshot {
@@ -25,6 +36,12 @@ export interface IBlockSnapshot {
   exercises: IBlockExerciseSnapshot[];
 }
 
+export interface IFeedback {
+  effort: number;
+  tags?: FeedbackTag[];
+  note?: string;
+}
+
 export interface ICompletedSession extends Document {
   clientId: Types.ObjectId;
   programId: Types.ObjectId;
@@ -32,7 +49,10 @@ export interface ICompletedSession extends Document {
   sessionOrder: number;
   blocks: IBlockSnapshot[];
   coachNotes?: string;
-  metrics: {
+  feedback?: IFeedback;
+  /** @deprecated remplacé par `feedback`. Conservé en lecture pour l'historique
+   * déjà enregistré : on ne rétro-remplit rien. */
+  metrics?: {
     stress: number;
     mood: number;
     energy: number;
@@ -42,7 +62,18 @@ export interface ICompletedSession extends Document {
   clientNotes?: string;
   viewedByCoach: boolean;
   completedAt: Date;
+  editedAt?: Date;
 }
+
+const performedSchema = new Schema(
+  {
+    weight: { type: Number, min: 0 },
+    reps: { type: Number, min: 0 },
+    sets: { type: Number, min: 0 },
+    duration: { type: Number, min: 0 },
+  },
+  { _id: false }
+);
 
 const exerciseSnapshotSchema = new Schema(
   {
@@ -56,8 +87,9 @@ const exerciseSnapshotSchema = new Schema(
       value: { type: Number },
       unit: { type: String },
     },
+    performed: { type: performedSchema, default: undefined },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const blockSnapshotSchema = new Schema(
@@ -75,41 +107,53 @@ const blockSnapshotSchema = new Schema(
     repsScheme: [{ type: Number }],
     exercises: [exerciseSnapshotSchema],
   },
-  { _id: false },
+  { _id: false }
+);
+
+const feedbackSchema = new Schema(
+  {
+    effort: { type: Number, required: true, min: 1, max: 5 },
+    tags: [{ type: String, enum: FEEDBACK_TAGS }],
+    note: { type: String, trim: true, maxlength: 2000 },
+  },
+  { _id: false }
 );
 
 const CompletedSessionSchema = new Schema(
   {
-    clientId: { type: Schema.Types.ObjectId, ref: "Client", required: true },
-    programId: { type: Schema.Types.ObjectId, ref: "Program", required: true },
+    clientId: { type: Schema.Types.ObjectId, ref: 'Client', required: true },
+    programId: { type: Schema.Types.ObjectId, ref: 'Program', required: true },
     originalSessionId: {
       type: Schema.Types.ObjectId,
-      ref: "Session",
+      ref: 'Session',
       required: true,
     },
     sessionOrder: { type: Number, required: true },
     blocks: [blockSnapshotSchema],
     coachNotes: { type: String },
+    feedback: { type: feedbackSchema, default: undefined },
+    // Legacy : anciens bilans en 5 axes. Plus jamais écrit, toujours lu.
     metrics: {
-      stress: { type: Number, required: true, min: 1, max: 5 },
-      mood: { type: Number, required: true, min: 1, max: 5 },
-      energy: { type: Number, required: true, min: 1, max: 5 },
-      sleep: { type: Number, required: true, min: 1, max: 5 },
-      soreness: { type: Number, required: true, min: 1, max: 5 },
+      stress: { type: Number, min: 1, max: 5 },
+      mood: { type: Number, min: 1, max: 5 },
+      energy: { type: Number, min: 1, max: 5 },
+      sleep: { type: Number, min: 1, max: 5 },
+      soreness: { type: Number, min: 1, max: 5 },
     },
     clientNotes: { type: String },
     viewedByCoach: { type: Boolean, default: false },
     completedAt: { type: Date, default: Date.now },
+    editedAt: { type: Date },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 CompletedSessionSchema.index({ clientId: 1, completedAt: -1 });
 CompletedSessionSchema.index({ clientId: 1, programId: 1 });
 
 const CompletedSession = model<ICompletedSession>(
-  "CompletedSession",
-  CompletedSessionSchema,
+  'CompletedSession',
+  CompletedSessionSchema
 );
 
 export default CompletedSession;

@@ -8,6 +8,8 @@ import CompletedSession from '../models/CompletedSession';
 import { getOrCreate } from '../services/programService';
 import logger from '../utils/logger';
 import { formatSession, PopulatedSession } from '../utils/sessionFormatter';
+import { applyPerformed } from '../services/completedSessionService';
+import { isValidObjectId } from 'mongoose';
 
 // GET /api/client/program
 export const getProgram = catchAsync(async (req: Request, res: Response) => {
@@ -33,7 +35,7 @@ export const completeSession = catchAsync(
   async (req: Request, res: Response) => {
     const client = res.locals.client as IClient;
     const { sessionId } = req.params;
-    const { metrics, clientNotes, completedAt } = req.body;
+    const { feedback, metrics, performed, clientNotes, completedAt } = req.body;
     const rid = req.requestId ?? '?';
 
     logger.info(`[${rid}] completeSession: start`, {
@@ -65,16 +67,20 @@ export const completeSession = catchAsync(
       throw new AppError('Séance introuvable', 404);
     }
 
+    // La prescription est recalculée ici, côté serveur, à partir de la séance
+    // du coach. Le client n'y touche pas : il n'ajoute que ce qu'il a fait.
     const formatted = formatSession(session as unknown as PopulatedSession);
+    const blocks = applyPerformed(formatted.blocks, performed);
 
     const completed = await CompletedSession.create({
       clientId: client._id,
       programId: program._id,
       originalSessionId: session._id,
       sessionOrder: session.order,
-      blocks: formatted.blocks,
+      blocks,
       coachNotes: session.notes,
-      metrics,
+      ...(feedback ? { feedback } : {}),
+      ...(metrics ? { metrics } : {}),
       clientNotes,
       ...(completedAt ? { completedAt: new Date(completedAt) } : {}),
     });
@@ -102,3 +108,54 @@ export const getHistory = catchAsync(async (req: Request, res: Response) => {
 
   res.status(200).json({ history });
 });
+
+// PATCH /api/client/sessions/completed/:id
+// Corriger un bilan déjà envoyé : le ressenti, les notes, la date, et ce qui
+// a réellement été fait. Toujours ouvert, sans fenêtre de temps.
+export const updateCompletedSession = catchAsync(
+  async (req: Request, res: Response) => {
+    const client = res.locals.client as IClient;
+    const { id } = req.params;
+    const { feedback, performed, clientNotes, completedAt } = req.body;
+    const rid = req.requestId ?? '?';
+
+    if (!isValidObjectId(id)) throw new AppError('Bilan introuvable', 404);
+
+    const completed = await CompletedSession.findOne({
+      _id: id,
+      clientId: client._id,
+    });
+
+    if (!completed) {
+      logger.warn(`[${rid}] updateCompletedSession: not found`, {
+        clientId: client._id,
+        completedId: id,
+      });
+      throw new AppError('Bilan introuvable', 404);
+    }
+
+    if (feedback !== undefined) completed.set('feedback', feedback);
+    if (clientNotes !== undefined) completed.clientNotes = clientNotes;
+    if (completedAt !== undefined)
+      completed.completedAt = new Date(completedAt);
+
+    if (performed !== undefined) {
+      // On repart du snapshot stocké et on ne réécrit que `performed` :
+      // la prescription enregistrée le jour de la séance reste intacte.
+      const blocks = applyPerformed(completed.toObject().blocks, performed);
+      completed.set('blocks', blocks);
+    }
+
+    completed.editedAt = new Date();
+    // Une correction remet le bilan dans la pile du coach.
+    completed.viewedByCoach = false;
+
+    await completed.save();
+
+    logger.info(`[${rid}] updateCompletedSession: success`, {
+      clientId: client._id,
+      completedId: completed._id,
+    });
+    res.status(200).json({ completed });
+  }
+);

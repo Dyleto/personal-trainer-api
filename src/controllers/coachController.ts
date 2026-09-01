@@ -74,19 +74,27 @@ export const getClients = catchAsync(async (req: Request, res: Response) => {
     },
     { $unwind: '$userDoc' },
     {
+      // Un seul passage sur les séances du client : les bilans non lus et la
+      // date de la dernière séance. Le $match tape l'index
+      // { clientId: 1, completedAt: -1 }.
       $lookup: {
         from: 'completedsessions',
         let: { clientId: '$_id' },
         pipeline: [
+          { $match: { $expr: { $eq: ['$clientId', '$$clientId'] } } },
           {
-            $match: {
-              $expr: { $eq: ['$clientId', '$$clientId'] },
-              viewedByCoach: { $ne: true },
+            $group: {
+              _id: null,
+              lastCompletedAt: { $max: '$completedAt' },
+              unseen: {
+                $sum: {
+                  $cond: [{ $ne: ['$viewedByCoach', true] }, 1, 0],
+                },
+              },
             },
           },
-          { $count: 'total' },
         ],
-        as: 'unseenData',
+        as: 'sessionStats',
       },
     },
     {
@@ -96,7 +104,11 @@ export const getClients = catchAsync(async (req: Request, res: Response) => {
         lastName: '$userDoc.lastName',
         picture: '$userDoc.picture',
         unseenCount: {
-          $ifNull: [{ $arrayElemAt: ['$unseenData.total', 0] }, 0],
+          $ifNull: [{ $arrayElemAt: ['$sessionStats.unseen', 0] }, 0],
+        },
+        // Absent tant que le client n'a jamais terminé de séance.
+        lastCompletedAt: {
+          $arrayElemAt: ['$sessionStats.lastCompletedAt', 0],
         },
       },
     },
@@ -193,14 +205,62 @@ export const getExercisesStats = catchAsync(
   }
 );
 
+// Nombre de séances du coach dans lesquelles chaque exercice apparaît.
+// La chaîne part de Client (index coaches.coachId) puis suit programs.clientId
+// et sessions.programId, tous deux indexés.
+const getExerciseUsage = async (
+  coachId: Types.ObjectId
+): Promise<Map<string, number>> => {
+  const rows = await Client.aggregate<{ _id: Types.ObjectId; count: number }>([
+    { $match: { 'coaches.coachId': coachId } },
+    { $project: { _id: 1 } },
+    {
+      $lookup: {
+        from: 'programs',
+        localField: '_id',
+        foreignField: 'clientId',
+        as: 'programs',
+      },
+    },
+    { $unwind: '$programs' },
+    {
+      $lookup: {
+        from: 'sessions',
+        localField: 'programs._id',
+        foreignField: 'programId',
+        as: 'sessions',
+      },
+    },
+    { $unwind: '$sessions' },
+    { $unwind: '$sessions.blocks' },
+    { $unwind: '$sessions.blocks.exercises' },
+    {
+      $group: {
+        _id: '$sessions.blocks.exercises.exerciseId',
+        // Un exercice placé deux fois dans la même séance compte pour une.
+        sessionIds: { $addToSet: '$sessions._id' },
+      },
+    },
+    { $project: { count: { $size: '$sessionIds' } } },
+  ]);
+
+  return new Map(rows.map((row) => [String(row._id), row.count]));
+};
+
 export const getExercises = catchAsync(async (req: Request, res: Response) => {
   const coach = res.locals.coach as ICoach;
 
-  const exercises = await Exercise.find({ createdBy: coach._id }).sort({
-    name: 1,
-  });
+  const [exercises, usage] = await Promise.all([
+    Exercise.find({ createdBy: coach._id }).sort({ name: 1 }).lean(),
+    getExerciseUsage(coach._id as Types.ObjectId),
+  ]);
 
-  res.status(200).json(exercises);
+  res.status(200).json(
+    exercises.map((exercise) => ({
+      ...exercise,
+      usageCount: usage.get(String(exercise._id)) ?? 0,
+    }))
+  );
 });
 
 export const getExerciseDetails = catchAsync(
