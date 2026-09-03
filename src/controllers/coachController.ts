@@ -82,10 +82,14 @@ export const getClients = catchAsync(async (req: Request, res: Response) => {
         let: { clientId: '$_id' },
         pipeline: [
           { $match: { $expr: { $eq: ['$clientId', '$$clientId'] } } },
+          // Décroissant : `$first` donne la séance la plus récente, donc son
+          // ressenti, sans un second passage sur la collection.
+          { $sort: { completedAt: -1 } },
           {
             $group: {
               _id: null,
-              lastCompletedAt: { $max: '$completedAt' },
+              lastCompletedAt: { $first: '$completedAt' },
+              lastEffort: { $first: '$feedback.effort' },
               unseen: {
                 $sum: {
                   $cond: [{ $ne: ['$viewedByCoach', true] }, 1, 0],
@@ -109,6 +113,31 @@ export const getClients = catchAsync(async (req: Request, res: Response) => {
         // Absent tant que le client n'a jamais terminé de séance.
         lastCompletedAt: {
           $arrayElemAt: ['$sessionStats.lastCompletedAt', 0],
+        },
+        // Le ressenti de cette dernière séance — absent si elle n'en portait
+        // pas (bilan ancienne formule, ou terminée sans se prononcer).
+        lastEffort: {
+          $arrayElemAt: ['$sessionStats.lastEffort', 0],
+        },
+        // Depuis quand ce client est suivi par CE coach : sans une seule
+        // séance terminée, c'est la seule mesure honnête de son inactivité.
+        linkedAt: {
+          $arrayElemAt: [
+            {
+              $map: {
+                input: {
+                  $filter: {
+                    input: '$coaches',
+                    as: 'link',
+                    cond: { $eq: ['$$link.coachId', coach._id] },
+                  },
+                },
+                as: 'link',
+                in: '$$link.linkedAt',
+              },
+            },
+            0,
+          ],
         },
       },
     },
