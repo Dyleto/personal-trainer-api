@@ -3,11 +3,23 @@ import { FEEDBACK_TAGS, FeedbackTag } from '../constants/feedback';
 
 // Ce que le client a réellement fait, à côté de la prescription.
 // Une clé absente = non renseignée. On n'écrit jamais 0 pour dire "rien".
-export interface IPerformed {
+/** Ce que le client a fait sur UNE série. */
+export interface IPerformedSet {
   weight?: number;
   reps?: number;
-  sets?: number;
   duration?: number;
+}
+
+/**
+ * Ce que le client a réellement fait, série par série.
+ *
+ * La liste s'arrête là où l'exercice s'est arrêté : une série prescrite qui
+ * n'y figure pas n'a pas été faite. C'est la seule façon de distinguer « j'ai
+ * fait mes quatre séries » de « j'ai lâché à la deuxième », que l'ancien
+ * couple poids/reps unique ne pouvait pas exprimer.
+ */
+export interface IPerformed {
+  sets: IPerformedSet[];
 }
 
 export interface IBlockExerciseSnapshot {
@@ -65,12 +77,18 @@ export interface ICompletedSession extends Document {
   editedAt?: Date;
 }
 
-const performedSchema = new Schema(
+const performedSetSchema = new Schema(
   {
     weight: { type: Number, min: 0 },
     reps: { type: Number, min: 0 },
-    sets: { type: Number, min: 0 },
     duration: { type: Number, min: 0 },
+  },
+  { _id: false }
+);
+
+const performedSchema = new Schema(
+  {
+    sets: { type: [performedSetSchema], required: true },
   },
   { _id: false }
 );

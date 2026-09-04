@@ -1,24 +1,12 @@
-import { IPerformed } from '../models/CompletedSession';
+import { IPerformed, IPerformedSet } from '../models/CompletedSession';
 
-// Une valeur envoyée par le client pour un exercice donné.
-// `null` = efface cette valeur, clé absente = n'y touche pas.
+// Ce que le client envoie pour un exercice donné : la liste complète de ses
+// séries. Elle remplace le réalisé enregistré, `[]` l'efface.
 export type PerformedInput = {
   blockOrder: number;
   exerciseOrder: number;
-  weight?: number | null;
-  reps?: number | null;
-  sets?: number | null;
-  duration?: number | null;
+  sets: IPerformedSet[];
 };
-
-type PerformedField = keyof IPerformed;
-
-const PERFORMED_FIELDS: PerformedField[] = [
-  'weight',
-  'reps',
-  'sets',
-  'duration',
-];
 
 type ExerciseLike = { order: number; performed?: IPerformed };
 type BlockLike = { order: number; exercises: ExerciseLike[] };
@@ -31,27 +19,32 @@ type WithPerformed<B extends BlockLike> = Omit<B, 'exercises'> & {
 const keyOf = (blockOrder: number, exerciseOrder: number) =>
   `${blockOrder}:${exerciseOrder}`;
 
-const mergePerformed = (
-  current: IPerformed | undefined,
-  entry: PerformedInput
-): IPerformed | undefined => {
-  const next: IPerformed = { ...(current ?? {}) };
+const isEmptySet = (set: IPerformedSet): boolean =>
+  set.weight === undefined &&
+  set.reps === undefined &&
+  set.duration === undefined;
 
-  PERFORMED_FIELDS.forEach((field) => {
-    const value = entry[field];
-    if (value === undefined) return; // non fourni : on ne touche pas
-    if (value === null)
-      delete next[field]; // effacé explicitement
-    else next[field] = value;
-  });
-
-  // Aucune valeur renseignée : on laisse la clé absente plutôt qu'un objet
-  // vide. « Pas renseigné » ne doit jamais ressembler à « zéro ».
-  return Object.keys(next).length > 0 ? next : undefined;
+// Une série laissée vide veut dire que l'exercice s'est arrêté là : les
+// suivantes n'ont pas eu lieu, on ne les enregistre pas. Une série vide au
+// milieu tronque donc, elle ne se saute pas.
+const normalize = (sets: IPerformedSet[]): IPerformed | undefined => {
+  const kept: IPerformedSet[] = [];
+  for (const set of sets) {
+    if (isEmptySet(set)) break;
+    // On ne recopie que les clés renseignées : « non renseigné » ne doit
+    // jamais arriver en base sous la forme d'un zéro ou d'un `null`.
+    const clean: IPerformedSet = {};
+    if (set.weight !== undefined) clean.weight = set.weight;
+    if (set.reps !== undefined) clean.reps = set.reps;
+    if (set.duration !== undefined) clean.duration = set.duration;
+    kept.push(clean);
+  }
+  return kept.length > 0 ? { sets: kept } : undefined;
 };
 
 /**
- * Recopie les valeurs réellement réalisées dans le snapshot de séance.
+ * Recopie les séries réellement réalisées dans le snapshot de séance.
+ *
  * Ne touche QUE `exercises[].performed` : la prescription (sets/reps/duration
  * du coach) reste celle calculée par le serveur, le client ne peut pas la
  * réécrire.
@@ -72,10 +65,7 @@ export const applyPerformed = <B extends BlockLike>(
     exercises: block.exercises.map((exercise) => {
       const entry = byKey.get(keyOf(block.order, exercise.order));
       if (!entry) return exercise;
-      return {
-        ...exercise,
-        performed: mergePerformed(exercise.performed, entry),
-      };
+      return { ...exercise, performed: normalize(entry.sets) };
     }),
   }));
 };

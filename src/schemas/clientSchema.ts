@@ -17,17 +17,21 @@ const feedbackSchema = z.object({
   note: z.string().trim().max(2000).optional(),
 });
 
-// Une valeur réellement faite. `null` veut dire « efface cette valeur »,
-// `undefined` (clé absente) veut dire « n'y touche pas ».
-const performedValue = z.number().min(0).max(10000).nullable().optional();
+// Ce que le client a fait sur une série. Une clé absente veut dire « non
+// renseignée » — jamais zéro.
+const performedSetSchema = z.object({
+  weight: z.number().min(0).max(10000).optional(),
+  reps: z.number().min(0).max(10000).optional(),
+  duration: z.number().min(0).max(100000).optional(),
+});
 
+// La liste remplace intégralement le réalisé de cet exercice : `[]` l'efface.
+// Plus de protocole « null efface, clé absente ne touche pas » — il portait
+// une valeur par exercice, il ne saurait pas dire quelle série corriger.
 const performedEntrySchema = z.object({
   blockOrder: z.number().int().min(0),
   exerciseOrder: z.number().int().min(0),
-  weight: performedValue,
-  reps: performedValue,
-  sets: performedValue,
-  duration: performedValue,
+  sets: z.array(performedSetSchema).max(50),
 });
 
 const performedSchema = z.array(performedEntrySchema).max(500);
