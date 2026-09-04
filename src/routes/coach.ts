@@ -14,6 +14,7 @@ const router = Router();
 router.use(requireCoach);
 
 // INVITATIONS
+router.get('/invitation', coachController.getActiveInvitation);
 router.post('/generate-invitation', coachController.generateInvitation);
 
 // CLIENTS

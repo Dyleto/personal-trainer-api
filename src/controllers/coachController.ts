@@ -19,6 +19,34 @@ import { getErrorMessage } from '../utils/errors';
 // INVITATIONS
 // --------------------------------------------------------------------------
 
+/**
+ * Le lien d'invitation actif, s'il y en a un — sans en créer.
+ *
+ * `generateInvitation` recycle un même lien par coach tant qu'il reste valide,
+ * mais ne le renvoyait qu'au moment de le créer : une fois le message de
+ * confirmation disparu, le coach n'avait plus aucun moyen de le retrouver et
+ * devait relancer l'opération pour recopier un lien qu'il possédait déjà.
+ */
+export const getActiveInvitation = catchAsync(
+  async (req: Request, res: Response) => {
+    const coach = res.locals.coach as ICoach;
+
+    const invitationToken = await InvitationToken.findOne({
+      coachId: coach._id,
+      expiresAt: { $gt: new Date() },
+    }).sort({ expiresAt: -1 });
+
+    res.status(200).json(
+      invitationToken
+        ? {
+            token: invitationToken.token,
+            expiresAt: invitationToken.expiresAt,
+          }
+        : null
+    );
+  }
+);
+
 export const generateInvitation = catchAsync(
   async (req: Request, res: Response) => {
     const coach = res.locals.coach as ICoach;
