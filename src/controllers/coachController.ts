@@ -405,6 +405,7 @@ export const updateProgramSessions = catchAsync(
     type SessionInput = {
       _id?: string;
       notes?: string;
+      suggestedDays?: number[];
       blocks?: unknown;
     };
 
@@ -453,6 +454,10 @@ export const updateProgramSessions = catchAsync(
           (sessionData, index) => {
             const payload = {
               notes: sessionData.notes,
+              // `?? []` et non `?? undefined` : Mongoose ignore les champs
+              // undefined lors d'un update, et le coach qui décoche tous les
+              // jours d'une séance ne pourrait plus jamais les retirer.
+              suggestedDays: sessionData.suggestedDays ?? [],
               blocks: sessionData.blocks,
               programId: program._id,
               order: index + 1,

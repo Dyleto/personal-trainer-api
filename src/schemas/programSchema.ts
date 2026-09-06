@@ -36,6 +36,16 @@ const sessionInputSchema = z.object({
   _id: z.string().optional(),
   order: z.number().int().min(1),
   notes: z.string().max(1000).optional(),
+  // Lundi = 0. On dédoublonne et on trie ici plutôt qu'à l'affichage : la
+  // liste est lue par deux clients (l'atelier du coach, la semaine du client)
+  // et aucun des deux n'a de raison de la remettre en ordre.
+  suggestedDays: z
+    .array(z.number().int().min(0).max(6))
+    .max(7)
+    .optional()
+    .transform((days) =>
+      days === undefined ? undefined : [...new Set(days)].sort((a, b) => a - b),
+    ),
   blocks: z.array(sessionBlockSchema).max(20),
 });
 

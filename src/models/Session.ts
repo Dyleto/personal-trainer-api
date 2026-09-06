@@ -47,6 +47,14 @@ export interface ISession extends Document {
   programId: Types.ObjectId;
   order: number;
   notes?: string;
+  /**
+   * Jours de la semaine où le coach conseille cette séance, lundi = 0.
+   *
+   * Purement indicatif : un jour manqué ne produit aucun état, aucune dette,
+   * rien à réconcilier. C'est un conseil affiché, pas un engagement suivi.
+   * Vide ou absent = la séance n'est rattachée à aucun jour.
+   */
+  suggestedDays?: number[];
   blocks: ISessionBlock[];
   createdAt: Date;
   updatedAt: Date;
@@ -91,6 +99,7 @@ const SessionSchema = new Schema(
     programId: { type: Schema.Types.ObjectId, ref: "Program", required: true },
     order: { type: Number, required: true },
     notes: { type: String },
+    suggestedDays: [{ type: Number, min: 0, max: 6 }],
     blocks: [sessionBlockSchema],
   },
   { timestamps: true },
